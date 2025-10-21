@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Recommender</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .search-section {
+            margin-bottom: 30px;
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .suggestion-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .suggestion-poster {
+            width: 50px;
+            height: 75px;
+            object-fit: cover;
+            border-radius: 5px;
+            flex-shrink: 0;
+        }
+
+        .suggestion-content {
+            flex: 1;
+        }
+
+        .suggestion-item:hover {
+            background: #f8f8f8;
+        }
+
+        .suggestion-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .suggestion-meta {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 15px;
+            color: #666;
+        }
+
+        .selected-movies {
+            margin-bottom: 30px;
+        }
+
+        .selected-movies h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .movie-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .movie-chip {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .movie-chip-poster {
+            width: 30px;
+            height: 45px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .movie-chip-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .remove-btn {
+            background: rgba(255,255,255,0.3);
+            border: none;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .remove-btn:hover {
+            background: rgba(255,255,255,0.5);
+        }
+
+        .get-recommendations {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .get-recommendations:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .get-recommendations:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .recommendations {
+            margin-top: 40px;
+        }
+
+        .recommendations h2 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .movie-card {
+            background: #f8f8f8;
+            border-radius: 15px;
+            padding: 0;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .movie-poster {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+        }
+
+        .movie-card-content {
+            padding: 20px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .movie-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .movie-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .movie-meta {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .movie-genres {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .genre-tag {
+            background: #667eea;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+
+        .match-score {
+            background: #4caf50;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .warning {
+            text-align: center;
+            color: #ff6b6b;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Movie Recommender</h1>
+        <p class="subtitle">Select 3-10 movies you love and get personalized recommendations</p>
+
+        <div class="search-section">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search for movies...">
+                <div class="suggestions" id="suggestions"></div>
+            </div>
+        </div>
+
+        <div class="selected-movies">
+            <h2>Your Selected Movies (<span id="count">0</span>/10)</h2>
+            <div class="movie-chips" id="selectedMovies"></div>
+            <p class="warning" id="warning"></p>
+        </div>
+
+        <button class="get-recommendations" id="getRecommendations" disabled>
+            Get Recommendations
+        </button>
+
+        <div class="recommendations" id="recommendationsSection" style="display: none;">
+            <h2>Recommended Movies For You</h2>
+            <div class="movie-grid" id="movieGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001/api';
+        
+        let selectedMovies = [];
+        let searchTimeout;
+        let searchCache = {};
+
+        const searchInput = document.getElementById('searchInput');
+        const suggestionsDiv = document.getElementById('suggestions');
+        const selectedMoviesDiv = document.getElementById('selectedMovies');
+        const countSpan = document.getElementById('count');
+        const warningP = document.getElementById('warning');
+        const getRecommendationsBtn = document.getElementById('getRecommendations');
+
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            clearTimeout(searchTimeout);
+            
+            if (query.length < 2) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(() => searchMovies(query), 500);
+        });
+
+        async function searchMovies(query) {
+            if (searchCache[query]) {
+                displaySuggestions(searchCache[query]);
+                return;
+            }
+
+            suggestionsDiv.innerHTML = '<div class="loading">Searching...</div>';
+            suggestionsDiv.style.display = 'block';
+
+            try {
+                const response = await fetch(`${API_URL}/search?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.results && data.results.length > 0) {
+                    searchCache[query] = data.results;
+                    displaySuggestions(data.results);
+                } else {
+                    suggestionsDiv.innerHTML = '<div class="loading">No movies found</div>';
+                }
+            } catch (error) {
+                suggestionsDiv.innerHTML = '<div class="loading">Error: Backend server not running</div>';
+                console.error(error);
+            }
+        }
+
+        function displaySuggestions(movies) {
+            suggestionsDiv.innerHTML = '';
+            
+            movies.slice(0, 10).forEach(movie => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+                
+                const posterUrl = movie.poster_path 
+                    ? `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                    : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="50" height="75"%3E%3Crect width="50" height="75" fill="%23ddd"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="10"%3ENo Image%3C/text%3E%3C/svg%3E';
+                
+                const year = movie.release_date ? movie.release_date.substring(0, 4) : 'N/A';
+                
+                div.innerHTML = `
+                    <img src="${posterUrl}" alt="${movie.title}" class="suggestion-poster">
+                    <div class="suggestion-content">
+                        <div class="suggestion-title">${movie.title} (${year})</div>
+                        <div class="suggestion-meta">Rating: ${movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'}/10</div>
+                    </div>
+                `;
+                div.onclick = () => selectMovie(movie);
+                suggestionsDiv.appendChild(div);
+            });
+            
+            suggestionsDiv.style.display = 'block';
+        }
+
+        async function selectMovie(movie) {
+            if (selectedMovies.length >= 10) {
+                warningP.textContent = 'Maximum 10 movies allowed';
+                return;
+            }
+
+            if (selectedMovies.some(m => m.id === movie.id)) {
+                warningP.textContent = 'Movie already selected';
+                return;
+            }
+
+            // Fetch full details
+            try {
+                const response = await fetch(`${API_URL}/movie/${movie.id}`);
+                const fullMovie = await response.json();
+                
+                selectedMovies.push({
+                    id: fullMovie.id,
+                    title: fullMovie.title,
+                    year: fullMovie.release_date ? fullMovie.release_date.substring(0, 4) : 'N/A',
+                    poster: fullMovie.poster_path,
+                    rating: fullMovie.vote_average,
+                    genres: fullMovie.genres || [],
+                    director: fullMovie.credits?.crew?.find(c => c.job === 'Director')?.name || 'N/A',
+                    actors: fullMovie.credits?.cast?.slice(0, 3).map(a => a.name) || []
+                });
+
+                updateSelectedMovies();
+                searchInput.value = '';
+                suggestionsDiv.style.display = 'none';
+                warningP.textContent = '';
+            } catch (error) {
+                console.error('Error fetching movie details:', error);
+                warningP.textContent = 'Error loading movie details';
+            }
+        }
+
+        function updateSelectedMovies() {
+            selectedMoviesDiv.innerHTML = '';
+            
+            selectedMovies.forEach((movie, index) => {
+                const chip = document.createElement('div');
+                chip.className = 'movie-chip';
+                
+                const posterUrl = movie.poster 
+                    ? `https://image.tmdb.org/t/p/w92${movie.poster}`
+                    : '';
+                
+                chip.innerHTML = `
+                    <div class="movie-chip-content">
+                        ${posterUrl ? `<img src="${posterUrl}" alt="${movie.title}" class="movie-chip-poster">` : ''}
+                        <span>${movie.title} (${movie.year})</span>
+                    </div>
+                    <button class="remove-btn" onclick="removeMovie(${index})">×</button>
+                `;
+                selectedMoviesDiv.appendChild(chip);
+            });
+
+            countSpan.textContent = selectedMovies.length;
+            getRecommendationsBtn.disabled = selectedMovies.length < 3;
+
+            if (selectedMovies.length < 3) {
+                warningP.textContent = `Please select at least ${3 - selectedMovies.length} more movie(s)`;
+            } else {
+                warningP.textContent = '';
+            }
+        }
+
+        function removeMovie(index) {
+            selectedMovies.splice(index, 1);
+            updateSelectedMovies();
+        }
+
+        getRecommendationsBtn.addEventListener('click', getRecommendations);
+
+        async function getRecommendations() {
+            if (selectedMovies.length < 3) return;
+
+            getRecommendationsBtn.disabled = true;
+            getRecommendationsBtn.textContent = 'Finding similar movies...';
+
+            const allRecs = new Map(); // Use Map to track movies and their match count
+            const seenIds = new Set();
+
+            // Get recommendations for each selected movie
+            for (const movie of selectedMovies) {
+                console.log(`Getting recommendations for: ${movie.title}`);
+                
+                try {
+                    // Get both similar movies AND recommendations from TMDB
+                    const [similarRes, recsRes] = await Promise.all([
+                        fetch(`${API_URL}/movie/${movie.id}/similar`),
+                        fetch(`${API_URL}/movie/${movie.id}/recommendations`)
+                    ]);
+                    
+                    const similarData = await similarRes.json();
+                    const recsData = await recsRes.json();
+                    
+                    // Combine results
+                    const combined = [
+                        ...(similarData.results || []),
+                        ...(recsData.results || [])
+                    ];
+                    
+                    // Process each recommendation
+                    for (const rec of combined.slice(0, 20)) {
+                        if (!selectedMovies.some(m => m.id === rec.id)) {
+                            // Fetch full details to compare
+                            if (!seenIds.has(rec.id)) {
+                                const detailsRes = await fetch(`${API_URL}/movie/${rec.id}`);
+                                const details = await detailsRes.json();
+                                seenIds.add(rec.id);
+                                
+                                // Calculate match score for this reference movie
+                                const matchScore = calculateMatchScore(details, movie);
+                                
+                                // Check if this movie was already recommended for another user movie
+                                if (allRecs.has(rec.id)) {
+                                    const existing = allRecs.get(rec.id);
+                                    existing.matchCount++;
+                                    existing.similarToMovies.push(movie.title);
+                                    // Take the higher individual score, then add multi-match bonus
+                                    existing.baseScore = Math.max(existing.baseScore, matchScore.total);
+                                    existing.matchBreakdown = matchScore.breakdown; // Keep latest breakdown
+                                } else {
+                                    allRecs.set(rec.id, {
+                                        ...details,
+                                        baseScore: matchScore.total,
+                                        matchCount: 1,
+                                        similarToMovies: [movie.title],
+                                        matchBreakdown: matchScore.breakdown,
+                                        year: details.release_date ? details.release_date.substring(0, 4) : 'N/A'
+                                    });
+                                }
+                            } else if (allRecs.has(rec.id)) {
+                                // Already fetched, just increment count
+                                const existing = allRecs.get(rec.id);
+                                if (!existing.similarToMovies.includes(movie.title)) {
+                                    existing.matchCount++;
+                                    existing.similarToMovies.push(movie.title);
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Error fetching recommendations for ${movie.title}:`, error);
+                }
+            }
+
+            // Convert Map to array and calculate final scores with multi-match bonus
+            const finalRecs = Array.from(allRecs.values()).map(movie => {
+                let finalScore = movie.baseScore;
+                
+                // Multi-match bonus: +10 points per additional matching movie
+                if (movie.matchCount > 1) {
+                    const multiBonus = (movie.matchCount - 1) * 10;
+                    finalScore = Math.min(finalScore + multiBonus, 100);
+                }
+                
+                return {
+                    ...movie,
+                    matchScore: finalScore,
+                    multiMatchBonus: movie.matchCount > 1 ? (movie.matchCount - 1) * 10 : 0
+                };
+            });
+
+            // Sort by match score
+            finalRecs.sort((a, b) => b.matchScore - a.matchScore);
+            
+            // Display top 30
+            displayRecommendations(finalRecs.slice(0, 30));
+
+            getRecommendationsBtn.disabled = false;
+            getRecommendationsBtn.textContent = 'Get Recommendations';
+        }
+
+        function calculateMatchScore(candidate, reference) {
+            let score = 60; // Base score (TMDB already thinks it's similar) - INCREASED from 50
+            const breakdown = {
+                base: 60,
+                genre: 0,
+                director: 0,
+                actors: 0,
+                year: 0,
+                rating: 0
+            };
+
+            // 1. Genre Overlap (up to 15 points) - REDUCED from 25
+            const candGenres = candidate.genres?.map(g => g.id) || [];
+            const refGenres = reference.genres?.map(g => g.id) || [];
+            const genreOverlap = candGenres.filter(g => refGenres.includes(g)).length;
+            
+            if (genreOverlap >= 3) breakdown.genre = 15;
+            else if (genreOverlap === 2) breakdown.genre = 10;
+            else if (genreOverlap === 1) breakdown.genre = 5;
+            score += breakdown.genre;
+
+            // 2. Director Match (15 points)
+            const candDirector = candidate.credits?.crew?.find(c => c.job === 'Director')?.name;
+            if (candDirector && candDirector === reference.director) {
+                breakdown.director = 15;
+                score += 15;
+            }
+
+            // 3. Actor Overlap (up to 15 points)
+            const candActors = candidate.credits?.cast?.slice(0, 10).map(a => a.name) || [];
+            const refActors = reference.actors || [];
+            const actorOverlap = candActors.filter(a => refActors.includes(a)).length;
+            
+            breakdown.actors = Math.min(actorOverlap * 7, 15);
+            score += breakdown.actors;
+
+            // 4. Era/Year Proximity (up to 5 points) - REDUCED from 10
+            const candYear = candidate.release_date ? parseInt(candidate.release_date.substring(0, 4)) : 0;
+            const refYear = parseInt(reference.year) || 0;
+            
+            if (candYear && refYear) {
+                const yearDiff = Math.abs(candYear - refYear);
+                if (yearDiff <= 2) breakdown.year = 5;
+                else if (yearDiff <= 5) breakdown.year = 3;
+                else if (yearDiff <= 10) breakdown.year = 2;
+                else if (yearDiff <= 20) breakdown.year = 1;
+                score += breakdown.year;
+            }
+
+            // 5. Rating Quality Bonus (up to 10 points) - REDUCED from 20
+            const rating = candidate.vote_average || 0;
+            if (rating >= 8.0) breakdown.rating = 10;
+            else if (rating >= 7.5) breakdown.rating = 7;
+            else if (rating >= 7.0) breakdown.rating = 5;
+            else if (rating >= 6.5) breakdown.rating = 3;
+            score += breakdown.rating;
+
+            return {
+                total: Math.min(Math.round(score), 100),
+                breakdown
+            };
+        }
+
+        function displayRecommendations(recs) {
+            const movieGrid = document.getElementById('movieGrid');
+            const recommendationsSection = document.getElementById('recommendationsSection');
+
+            movieGrid.innerHTML = '';
+
+            if (recs.length === 0) {
+                movieGrid.innerHTML = '<div class="empty-state">No recommendations found</div>';
+            } else {
+                recs.forEach(movie => {
+                    const card = document.createElement('div');
+                    card.className = 'movie-card';
+                    
+                    const posterUrl = movie.poster_path
+                        ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+                        : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="280" height="400"%3E%3Crect width="280" height="400" fill="%23ddd"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="18"%3ENo Poster%3C/text%3E%3C/svg%3E';
+                    
+                    const genres = movie.genre_ids ? '' : ''; // We'd need to map genre IDs to names
+                    
+                    card.innerHTML = `
+                        <img src="${posterUrl}" alt="${movie.title}" class="movie-poster">
+                        <div class="movie-card-content">
+                            <h3>${movie.title}</h3>
+                            <div class="movie-meta">Year: ${movie.year}</div>
+                            <div class="movie-meta">Rating: ⭐ ${movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'}/10</div>
+                            <div class="movie-meta">${movie.overview ? movie.overview.substring(0, 100) + '...' : ''}</div>
+                            <div class="match-score">
+                                Match: ${movie.matchScore}%
+                                ${movie.matchCount > 1 ? `
+                                    <div style="font-size: 0.85em; margin-top: 5px; font-weight: bold; color: #fff; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 5px; display: inline-block;">
+                                        🔥 Matches ${movie.matchCount} of your movies! (+${movie.multiMatchBonus})
+                                    </div>
+                                ` : ''}
+                                <div style="font-size: 0.8em; margin-top: 5px; font-weight: normal;">
+                                    Similar to: ${movie.similarToMovies && movie.similarToMovies.length > 0 ? movie.similarToMovies.join(', ') : 'N/A'}
+                                </div>
+                                ${movie.matchBreakdown ? `
+                                    <div style="font-size: 0.75em; margin-top: 5px; font-weight: normal;">
+                                        ${movie.matchBreakdown.genre > 0 ? `🎭 Genres (+${movie.matchBreakdown.genre})` : ''}
+                                        ${movie.matchBreakdown.director > 0 ? ` 🎬 Director (+${movie.matchBreakdown.director})` : ''}
+                                        ${movie.matchBreakdown.actors > 0 ? ` 👥 Actors (+${movie.matchBreakdown.actors})` : ''}
+                                        ${movie.matchBreakdown.year > 0 ? ` 📅 Era (+${movie.matchBreakdown.year})` : ''}
+                                        ${movie.matchBreakdown.rating > 0 ? ` ⭐ Quality (+${movie.matchBreakdown.rating})` : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                    movieGrid.appendChild(card);
+                });
+            }
+
+            recommendationsSection.style.display = 'block';
+            recommendationsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-box')) {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
