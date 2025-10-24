@@ -345,7 +345,10 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3001/api';
+        // Better approach - use relative URL
+        const API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3001/api'
+            : '/api'; // Relative path when deployed
         
         let selectedMovies = [];
         let searchTimeout;
