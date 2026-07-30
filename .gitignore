@@ -1,4 +1,21 @@
 node_modules
 .env
+
 # Disk-backed TMDB cache (see CACHE_DIR in .env.example) - can grow large
 .cache
+
+# MovieLens datasets and the fetched TMDB corpus.
+#
+# Excluded because MovieLens is licensed for research and personal use and may not be
+# redistributed, and because the corpus is far too large to commit. Reproduce with
+# scripts/fetch-dataset.js followed by scripts/build-corpus.js.
+#
+# NOTE: this ignores data/ *contents*, not the directory itself. Ignoring the directory would
+# stop git descending into it, and the negations below would never be evaluated.
+data/*
+
+# Baseline results and the corpus manifest ARE committed. A measurement that only exists in a
+# terminal scrollback cannot be compared against later, which defeats the point of a baseline;
+# the manifest is what makes each result traceable to the corpus it was measured on.
+!data/results-*.json
+!data/corpus-manifest.json

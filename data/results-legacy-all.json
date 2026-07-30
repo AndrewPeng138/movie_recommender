@@ -1,0 +1,51 @@
+{
+  "model": "legacy",
+  "description": "Hand-tuned additive model shipped in public/index.html",
+  "seed": 42,
+  "split": "all",
+  "limit": 300,
+  "instancesEvaluated": 299,
+  "skipped": 1,
+  "recordedAt": "2026-07-30T20:10:22.199Z",
+  "report": {
+    "overall": {
+      "instances": 299,
+      "recall@10": 0.0368,
+      "recall@10_ci95": 0.0214,
+      "recall@30": 0.0635,
+      "recall@30_ci95": 0.0277,
+      "mrr": 0.0175,
+      "mrr_ci95": 0.0119,
+      "candidateRecall": 0.1037,
+      "candidateRecall_ci95": 0.0346,
+      "meanPoolSize": 247
+    },
+    "byPopularity": {
+      "note": "Split at 50 MovieLens ratings. Exposure bias means raw recall partly rewards popularity; a large gap here indicates the model is leaning on it.",
+      "popular": {
+        "instances": 176,
+        "recall@10": 0.0568,
+        "recall@10_ci95": 0.0343,
+        "recall@30": 0.0966,
+        "recall@30_ci95": 0.0438,
+        "mrr": 0.0286,
+        "mrr_ci95": 0.02,
+        "candidateRecall": 0.1534,
+        "candidateRecall_ci95": 0.0534,
+        "meanPoolSize": 246
+      },
+      "obscure": {
+        "instances": 123,
+        "recall@10": 0.0081,
+        "recall@10_ci95": 0.0159,
+        "recall@30": 0.0163,
+        "recall@30_ci95": 0.0224,
+        "mrr": 0.0015,
+        "mrr_ci95": 0.002,
+        "candidateRecall": 0.0325,
+        "candidateRecall_ci95": 0.0315,
+        "meanPoolSize": 249
+      }
+    }
+  }
+}
