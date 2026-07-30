@@ -1,11 +1,25 @@
 {
   "name": "movie-recommender-backend",
   "version": "1.0.0",
+  "description": "Pick 3-10 movies you love and get scored, explainable recommendations from TMDB.",
   "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
     "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "eslint": "^10.8.0",
+    "eslint-plugin-html": "^8.1.4"
   }
 }
