@@ -1,0 +1,79 @@
+{
+  "model": "legacy",
+  "description": "Hand-tuned additive model shipped in public/index.html",
+  "generator": "hybrid",
+  "targetMode": "all",
+  "cfStats": {
+    "usersUsed": 309,
+    "usersExcluded": 300,
+    "filmsWithNeighbours": 1993,
+    "pairsRetained": 238163,
+    "minCoRatings": 3,
+    "maxNeighbours": 50
+  },
+  "seed": 42,
+  "split": "all",
+  "limit": 300,
+  "instancesEvaluated": 299,
+  "skipped": 1,
+  "recordedAt": "2026-07-30T20:59:05.963Z",
+  "report": {
+    "overall": {
+      "instances": 299,
+      "hitRate@10": 0.806,
+      "hitRate@10_ci95": 0.0449,
+      "precision@10": 0.2769,
+      "precision@10_ci95": 0.0251,
+      "hitRate@30": 0.8963,
+      "hitRate@30_ci95": 0.0346,
+      "precision@30": 0.2075,
+      "precision@30_ci95": 0.0178,
+      "recall@30": 0.1751,
+      "mrr": 0.4827,
+      "mrr_ci95": 0.0444,
+      "poolHitRate": 0.9632,
+      "poolHitRate_ci95": 0.0214,
+      "meanTargets": 70,
+      "meanPoolSize": 394
+    },
+    "byPopularity": {
+      "note": "Target sets split at 50 MovieLens ratings. MovieLens carries exposure bias (people only rate films they chose to watch), so blended metrics partly reward popularity; a large gap here means the model is leaning on it.",
+      "popular": {
+        "instances": 291,
+        "hitRate@10": 0.8007,
+        "hitRate@10_ci95": 0.046,
+        "precision@10": 0.2557,
+        "precision@10_ci95": 0.0243,
+        "hitRate@30": 0.8935,
+        "hitRate@30_ci95": 0.0355,
+        "precision@30": 0.1895,
+        "precision@30_ci95": 0.0168,
+        "recall@30": 0.2434,
+        "mrr": 0.4573,
+        "mrr_ci95": 0.0446,
+        "poolHitRate": 0.9725,
+        "poolHitRate_ci95": 0.0188,
+        "meanTargets": 36,
+        "meanPoolSize": 393
+      },
+      "obscure": {
+        "instances": 277,
+        "hitRate@10": 0.213,
+        "hitRate@10_ci95": 0.0483,
+        "precision@10": 0.0303,
+        "precision@10_ci95": 0.008,
+        "hitRate@30": 0.3791,
+        "hitRate@30_ci95": 0.0572,
+        "precision@30": 0.0249,
+        "precision@30_ci95": 0.0049,
+        "recall@30": 0.0295,
+        "mrr": 0.0934,
+        "mrr_ci95": 0.0238,
+        "poolHitRate": 0.8087,
+        "poolHitRate_ci95": 0.0464,
+        "meanTargets": 38,
+        "meanPoolSize": 398
+      }
+    }
+  }
+}

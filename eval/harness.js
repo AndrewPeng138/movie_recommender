@@ -46,6 +46,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { getMovie, getSimilar, getRecommendations, cache } = require('../lib/tmdb');
 const { loadUserProfiles, loadPopularity, isDownloaded } = require('../lib/movielens');
+const collaborative = require('../lib/collaborative');
 const metrics = require('./metrics');
 
 const baselines = require('../lib/score-baselines');
@@ -140,8 +141,34 @@ function parseArgs() {
         seed: Number(get('--seed', 42)),
         split: get('--split', 'all'),
         model: get('--model', 'legacy'),
+        generator: get('--generator', 'tmdb'),
+        targets: get('--targets', 'all'),
         verbose: args.includes('--verbose')
     };
+}
+
+/**
+ * Builds the candidate pool for one pick using TMDB's own lists.
+ *
+ * This is the generator the shipped app uses, and the one measured at a 10.4% ceiling.
+ *
+ * @param {number} tmdbId
+ * @returns {Promise<number[]>}
+ */
+async function tmdbCandidates(tmdbId) {
+    return candidatesFor(tmdbId);
+}
+
+/**
+ * Builds the candidate pool from collaborative filtering neighbours.
+ *
+ * @param {object} cfModel - Model from lib/collaborative.js buildModel().
+ * @param {number} tmdbId
+ * @returns {number[]}
+ */
+function cfCandidates(cfModel, tmdbId) {
+    const related = cfModel.neighbours.get(tmdbId) || [];
+    return related.slice(0, CANDIDATES_PER_SOURCE * 2).map(n => n.id);
 }
 
 /**
@@ -194,7 +221,7 @@ async function candidatesFor(tmdbId) {
  * @param {object} options
  * @returns {Array<{userId: number, picks: number[], targetId: number, split: string}>}
  */
-function buildInstances({ limit, seed, split }) {
+function buildInstances({ limit, seed, split, targetMode }) {
     const rand = mulberry32(seed);
     const profiles = loadUserProfiles({ minLiked: MIN_PICKS + 1 });
     const instances = [];
@@ -211,10 +238,17 @@ function buildInstances({ limit, seed, split }) {
             shuffled.length - 1
         );
 
+        // Held-out films: liked by this user, never shown to the model.
+        //
+        // 'all' holds out every remaining like, so success means "recommended something they liked" --
+        // which is what the app actually tries to do. 'single' holds out exactly one, reproducing the
+        // stricter original protocol so previously recorded baselines stay comparable.
+        const held = targetMode === 'single' ? [shuffled[k]] : shuffled.slice(k);
+
         instances.push({
             userId,
             picks: shuffled.slice(0, k),
-            targetId: shuffled[k],      // The held-out film: liked, but never shown to the model.
+            targetIds: held,
             split: userSplit
         });
 
@@ -231,7 +265,7 @@ function buildInstances({ limit, seed, split }) {
  * @param {object} model - A scoring model exposing `rankCandidates`.
  * @returns {Promise<object|null>} Per-instance outcome, or null if unevaluable.
  */
-async function runInstance(instance, model) {
+async function runInstance(instance, model, { generator, cfModel }) {
     const pickDetails = (await Promise.all(instance.picks.map(safeDetails))).filter(Boolean);
     if (pickDetails.length < MIN_PICKS) return null;
 
@@ -242,7 +276,21 @@ async function runInstance(instance, model) {
     const candidateIds = new Set();
 
     for (const pick of pickDetails) {
-        const ids = (await candidatesFor(pick.id)).filter(id => !pickIds.has(id));
+        let ids;
+        if (generator === 'cf') {
+            ids = cfCandidates(cfModel, pick.id);
+        } else if (generator === 'hybrid') {
+            // Union of both sources. Content ranking still applies afterwards, so explanations
+            // survive regardless of which generator surfaced a given film.
+            ids = [...new Set([
+                ...(await tmdbCandidates(pick.id)),
+                ...cfCandidates(cfModel, pick.id)
+            ])];
+        } else {
+            ids = await tmdbCandidates(pick.id);
+        }
+
+        ids = ids.filter(id => !pickIds.has(id));
         groups.push({ pick, ids });
         ids.forEach(id => candidateIds.add(id));
     }
@@ -262,17 +310,16 @@ async function runInstance(instance, model) {
 
     return {
         ranked,
-        targetId: instance.targetId,
-        // Measured against the *pool*, not the ranked output, so a generation ceiling is visible
-        // independently of how the model ordered things.
-        inCandidatePool: candidateIds.has(instance.targetId),
-        poolSize: candidateIds.size,
+        targets: new Set(instance.targetIds),
+        // The pool is reported separately from the ranked output so a generation ceiling stays
+        // visible independently of how the model ordered things.
+        pool: candidateIds,
         split: instance.split
     };
 }
 
 async function main() {
-    const { limit, seed, split, model: modelName, verbose } = parseArgs();
+    const { limit, seed, split, model: modelName, generator, targets, verbose } = parseArgs();
     const started = Date.now();
 
     if (!isDownloaded()) {
@@ -286,26 +333,54 @@ async function main() {
         process.exit(1);
     }
 
-    console.log(`Evaluation harness — model "${model.name}"`);
+    console.log(`Evaluation harness — model "${model.name}", generator "${generator}"`);
     console.log(`  ${model.description}`);
     console.log(`  seed ${seed} | split ${split} | limit ${limit}\n`);
 
     const popularity = loadPopularity();
-    const instances = buildInstances({ limit, seed, split });
-    console.log(`Built ${instances.length} instances. Running...\n`);
+    const instances = buildInstances({ limit, seed, split, targetMode: targets });
+    console.log(`Built ${instances.length} instances.`);
+
+    // --- Collaborative filtering model, built ONCE with every evaluated user excluded ------------
+    //
+    // LEAKAGE CONTROL. This is the correctness property the whole comparison rests on.
+    //
+    // If an evaluated user's ratings stayed in the co-occurrence matrix, their own liking of both the
+    // picks and the held-out film would contribute to the counts linking them. The model would then
+    // "predict" the held-out film partly because that user liked it -- which is exactly the fact being
+    // withheld. Results would look excellent and mean nothing.
+    //
+    // Excluding the entire user, not merely the held-out rating, is the stricter and correct choice:
+    // their remaining ratings describe the same person's taste and would leak indirectly.
+    let cfModel = null;
+    if (generator === 'cf' || generator === 'hybrid') {
+        const evaluatedUsers = new Set(instances.map(i => i.userId));
+        console.log(`\nBuilding CF model, excluding ${evaluatedUsers.size} evaluated users...`);
+
+        cfModel = collaborative.buildModel({ excludeUsers: evaluatedUsers });
+
+        console.log(`  users used:            ${cfModel.stats.usersUsed}`);
+        console.log(`  users excluded:        ${cfModel.stats.usersExcluded} (leakage control)`);
+        console.log(`  films with neighbours: ${cfModel.stats.filmsWithNeighbours.toLocaleString()}`);
+        console.log(`  pairs retained:        ${cfModel.stats.pairsRetained.toLocaleString()}`);
+
+        if (cfModel.stats.usersUsed === 0) {
+            console.error('\nNo users left after exclusion — cannot build a CF model.');
+            process.exit(1);
+        }
+    }
+
+    console.log('\nRunning...\n');
 
     const outcomes = [];
     let skipped = 0;
 
     for (let i = 0; i < instances.length; i++) {
-        const result = await runInstance(instances[i], model);
+        const result = await runInstance(instances[i], model, { generator, cfModel });
 
         if (!result) { skipped++; continue; }
 
-        outcomes.push({
-            ...result,
-            targetPopularity: popularity.get(instances[i].targetId) || 0
-        });
+        outcomes.push({ ...result, popularityOf: popularity });
 
         if ((i + 1) % 25 === 0 || i === instances.length - 1) {
             const elapsed = ((Date.now() - started) / 1000).toFixed(0);
@@ -317,9 +392,9 @@ async function main() {
         }
 
         if (verbose && result.ranked.length) {
-            const rank = result.ranked.indexOf(result.targetId);
-            console.log(`      user ${instances[i].userId}: target rank ` +
-                `${rank === -1 ? 'not found' : rank + 1} of ${result.ranked.length}`);
+            const firstHit = result.ranked.findIndex(id => result.targets.has(id));
+            console.log(`      user ${instances[i].userId}: ${result.targets.size} targets, ` +
+                `first hit at ${firstHit === -1 ? 'none' : firstHit + 1} of ${result.ranked.length}`);
         }
     }
 
@@ -333,11 +408,15 @@ async function main() {
         `(${stats.hits.toLocaleString()} served from the frozen corpus)`);
 
     // Persist so the number is in the repository, not just a terminal scrollback.
-    const outPath = path.join(__dirname, '..', 'data', `results-${model.name}-${split}.json`);
+    const outPath = path.join(__dirname, '..', 'data',
+        `results-${model.name}-${generator}-${targets}.json`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, `${JSON.stringify({
         model: model.name,
         description: model.description,
+        generator,
+        targetMode: targets,
+        cfStats: cfModel ? cfModel.stats : null,
         seed, split, limit,
         instancesEvaluated: outcomes.length,
         skipped,
