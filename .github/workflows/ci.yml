@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------------------------------------------
+# Continuous integration.
+#
+# `main` is production — Render auto-deploys from it — so this runs on every pull request targeting
+# main to make the merge gates self-enforcing rather than remembered.
+#
+# Deliberately mirrors how Render builds: `npm ci` from the lockfile on a clean checkout. That catches
+# lockfile drift, which is the classic "works on my machine, fails on deploy" failure, because a local
+# node_modules can satisfy an import that the lockfile no longer provides.
+# ---------------------------------------------------------------------------------------------------
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same branch — no value in linting an outdated commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and boot check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # Matches the `engines` field in package.json (>=18). Node 22 is what the project develops on.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # `npm ci` (not `npm install`) so the lockfile is authoritative, exactly as on Render.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # Boot the server and confirm it serves the frontend. This is the check that would have caught
+      # the express.static and dotenv path bugs fixed in Phase 0, both of which only appear when the
+      # process starts somewhere other than a developer's project root.
+      #
+      # No TMDB_API_KEY is available in CI, so the /api routes are expected to return 400. That is
+      # fine — what matters here is that the process starts and static hosting resolves correctly.
+      - name: Boot check
+        run: |
+          node server.js &
+          SERVER_PID=$!
+          # Poll for readiness rather than sleeping a fixed amount.
+          for i in $(seq 1 20); do
+            if curl -sf -o /dev/null http://localhost:3001/; then
+              echo "Server responded after ${i} attempt(s)."
+              break
+            fi
+            if [ "$i" = "20" ]; then
+              echo "::error::Server did not respond within 20 attempts."
+              kill $SERVER_PID 2>/dev/null || true
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/)
+          echo "GET / -> HTTP ${STATUS}"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Expected HTTP 200 for the frontend, got ${STATUS}."
+            kill $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          kill $SERVER_PID 2>/dev/null || true
+          echo "Boot check passed."
