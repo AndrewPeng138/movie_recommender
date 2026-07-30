@@ -91,17 +91,46 @@ All routes return TMDB's payload largely unmodified.
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/api/search?query=<text>` | Free-text movie search |
+| `GET` | `/api/health` | Liveness check plus cache statistics |
+| `GET` | `/api/search?query=<text>` | Free-text movie search (query required, ≤200 chars) |
 | `GET` | `/api/movie/:tmdbId` | Full details, with `credits` appended |
 | `GET` | `/api/movie/:tmdbId/similar` | TMDB's `similar` list (20 per page) |
 | `GET` | `/api/movie/:tmdbId/recommendations` | TMDB's recommendations (20 per page) |
+| `GET` | `/api/movie/:tmdbId/keywords` | Thematic tags — "time loop", "heist", "dystopia" |
 
-**Error responses**
+`:tmdbId` must be a positive integer; anything else is rejected with a 400 before reaching TMDB.
+
+**Error responses** — all use the shape `{ "error": "..." }`.
 
 | Status | Meaning |
 |---|---|
-| `400` | `TMDB_API_KEY` is not configured |
-| `500` | The upstream request threw |
+| `400` | Invalid input — malformed movie id, or a missing/overlong search query |
+| `404` | TMDB has no such movie (propagated from upstream) |
+| `502` | TMDB could not be reached (network failure) |
+| `503` | `TMDB_API_KEY` is not configured on the server |
+| `500` | Unexpected server error |
+
+Upstream status codes are propagated rather than masked. Earlier versions returned HTTP 200 with a
+`{ success: false }` body for every failure, so clients could not distinguish "no results" from
+"the call failed."
+
+## Caching
+
+TMDB responses are cached to avoid re-fetching data that rarely changes. Movie details, similar,
+recommendations, and keywords are held for 24 hours; search results for 1 hour, since rankings shift
+and queries vary too widely for a long TTL to pay off.
+
+There are two backends, chosen by whether `CACHE_DIR` is set:
+
+| Backend | When | Why |
+|---|---|---|
+| **In-memory** (LRU, capped) | `CACHE_DIR` unset — this is production | Render's filesystem is ephemeral, so cache files would not survive a restart or deploy. An in-memory cache still pays off within a warm window: a single recommendation run reuses many candidates across your picks. |
+| **Disk** (sharded JSON) | `CACHE_DIR` set — local dev and tooling | The offline corpus build and evaluation harness cannot re-issue thousands of TMDB requests on every run. |
+
+Check `/api/health` to see it working — `hits` should climb on repeated identical requests. A cached
+response is roughly **25× faster** than a cold one (~7 ms versus ~180 ms locally).
+
+Only successful responses are cached; a failure is retried on the next request rather than remembered.
 
 ---
 
@@ -109,14 +138,22 @@ All routes return TMDB's payload largely unmodified.
 
 ```
 movie_recommender/
-├── server.js            # Express server — TMDB proxy + static hosting
+├── server.js            # Express server — thin routes + static hosting
+├── lib/
+│   ├── tmdb.js          # TMDB client: validation, caching, error mapping
+│   └── cache.js         # TTL cache with in-memory and disk backends
 ├── public/
 │   └── index.html       # Entire frontend: markup, CSS, and JS inline
+├── .github/workflows/
+│   └── ci.yml           # Lint + boot check on every PR
 ├── eslint.config.js     # Flat config; separate Node and browser sections
 ├── .env                 # Your API key (gitignored — never commit)
-├── .env.example         # Template documenting required variables
+├── .env.example         # Template documenting every variable
 └── package.json
 ```
+
+`server.js` deliberately contains no TMDB logic — routes validate their input and delegate to
+`lib/tmdb.js`, which owns the API key, URL construction, caching, and error mapping.
 
 ---
 
@@ -144,11 +181,18 @@ Honest accounting of what's wrong today, so nobody rediscovers these the hard wa
 
 ### Performance
 
-**A full recommendation run can take 30–60 seconds.** Candidate details are fetched serially inside a
-nested loop, so 10 selected movies issue up to ~200 sequential round-trips. At this request volume
-TMDB rate limiting (HTTP 429) is likely, and because the error handler wraps the entire candidate
-loop, a single 429 silently drops the rest of that pick's candidates. Results can therefore be quietly
-incomplete. There is also no server-side caching, so identical lookups re-hit TMDB on every run.
+**A full recommendation run can still take 30–60 seconds on a cold cache.** Candidate details are
+fetched serially inside a nested loop in the browser, so 10 selected movies issue up to ~200
+sequential round-trips. Caching helps substantially on repeat runs — re-running after tweaking a pick
+reuses nearly every candidate — but it does not fix the underlying serial fan-out, which needs the
+pipeline moved server-side.
+
+At this request volume TMDB rate limiting (HTTP 429) is possible, and because the error handler wraps
+the entire candidate loop, a single failure silently drops the rest of that pick's candidates.
+Results can therefore be quietly incomplete.
+
+On Render's free tier the instance spins down when idle, so the first visitor after a quiet period
+pays a cold start *and* an empty cache.
 
 ### Recommendation quality
 
@@ -171,10 +215,6 @@ incomplete. There is also no server-side caching, so identical lookups re-hit TM
 - **CORS is fully open** (`app.use(cors())`), so any origin can use this server as a free TMDB proxy
   on your quota.
 - **No rate limiting.**
-- **Upstream status is not propagated** — a TMDB 401 or 404 is relayed as HTTP 200 with a
-  `{ success: false }` body, so the client can't distinguish "no matches" from "call failed".
-- **No input validation** — `tmdbId` is interpolated into the upstream URL unchecked, and a missing
-  `query` produces a literal search for `"undefined"`.
 
 ### Frontend
 

@@ -443,6 +443,38 @@
         });
 
         /**
+         * Fetches JSON from our API, turning a non-2xx response into a thrown Error.
+         *
+         * The server now propagates real status codes: 400 for a malformed request, 404 for an
+         * unknown movie, 503 when it has no TMDB key. Previously every failure arrived as HTTP 200
+         * with a `{ success: false }` body, so `response.json()` succeeded and the caller silently
+         * treated a broken call as an empty result. Checking `ok` is what makes those statuses useful.
+         *
+         * @param {string} url - Absolute or relative URL to request.
+         * @returns {Promise<object>} Parsed JSON body.
+         * @throws {Error} If the response status is not 2xx.
+         */
+        async function fetchJson(url) {
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                // The server sends `{ error: "..." }`; fall back to the status if the body is not JSON.
+                let message = `Request failed (${response.status})`;
+                try {
+                    const body = await response.json();
+                    if (body && typeof body.error === 'string') message = body.error;
+                } catch {
+                    // Non-JSON error body — keep the status-based message.
+                }
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
+            }
+
+            return response.json();
+        }
+
+        /**
          * Replaces the suggestions dropdown with a single plain-text status line.
          *
          * Uses textContent rather than innerHTML so that any message derived from an error or API
@@ -480,8 +512,7 @@
             showSuggestionStatus('Searching...');
 
             try {
-                const response = await fetch(`${API_URL}/search?query=${encodeURIComponent(query)}`);
-                const data = await response.json();
+                const data = await fetchJson(`${API_URL}/search?query=${encodeURIComponent(query)}`);
 
                 // A newer search was issued while this one was in flight - drop this result.
                 if (token !== latestSearchToken) return;
@@ -503,7 +534,9 @@
                 }
             } catch (error) {
                 if (token !== latestSearchToken) return;
-                showSuggestionStatus('Error: could not reach the server');
+                // The server's message is specific and user-safe (e.g. "Query too long"), so prefer
+                // it over a generic string.
+                showSuggestionStatus(error.message || 'Error: could not reach the server');
                 console.error('Search failed:', error);
             }
         }
@@ -613,9 +646,7 @@
             pendingSelections.add(movie.id);
 
             try {
-                const response = await fetch(`${API_URL}/movie/${movie.id}`);
-                if (!response.ok) throw new Error(`Details request failed (${response.status})`);
-                const fullMovie = await response.json();
+                const fullMovie = await fetchJson(`${API_URL}/movie/${movie.id}`);
 
                 selectedMovies.push({
                     id: fullMovie.id,
@@ -770,13 +801,10 @@
                 
                 try {
                     // Get both similar movies AND recommendations from TMDB
-                    const [similarRes, recsRes] = await Promise.all([
-                        fetch(`${API_URL}/movie/${movie.id}/similar`),
-                        fetch(`${API_URL}/movie/${movie.id}/recommendations`)
+                    const [similarData, recsData] = await Promise.all([
+                        fetchJson(`${API_URL}/movie/${movie.id}/similar`),
+                        fetchJson(`${API_URL}/movie/${movie.id}/recommendations`)
                     ]);
-                    
-                    const similarData = await similarRes.json();
-                    const recsData = await recsRes.json();
                     
                     // Combine results
                     const combined = [
@@ -789,8 +817,7 @@
                         if (!selectedMovies.some(m => m.id === rec.id)) {
                             // Fetch full details to compare
                             if (!seenIds.has(rec.id)) {
-                                const detailsRes = await fetch(`${API_URL}/movie/${rec.id}`);
-                                const details = await detailsRes.json();
+                                const details = await fetchJson(`${API_URL}/movie/${rec.id}`);
                                 seenIds.add(rec.id);
                                 
                                 // Calculate match score for this reference movie

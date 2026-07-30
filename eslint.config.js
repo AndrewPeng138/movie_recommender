@@ -38,8 +38,7 @@ module.exports = [
                 __dirname: 'readonly',
                 __filename: 'readonly',
                 console: 'readonly',
-                // Node 18+ exposes fetch globally. node-fetch is still imported in server.js today;
-                // Phase 1 drops it in favour of this.
+                // Node 18+ exposes fetch globally; the node-fetch dependency was dropped in Phase 1.
                 fetch: 'readonly',
                 URL: 'readonly',
                 URLSearchParams: 'readonly',

@@ -1,2 +1,4 @@
 node_modules
 .env
+# Disk-backed TMDB cache (see CACHE_DIR in .env.example) - can grow large
+.cache
