@@ -1,0 +1,51 @@
+{
+  "model": "random",
+  "description": "Shuffles the candidate pool — the no-signal floor",
+  "seed": 42,
+  "split": "all",
+  "limit": 300,
+  "instancesEvaluated": 299,
+  "skipped": 1,
+  "recordedAt": "2026-07-30T20:18:02.005Z",
+  "report": {
+    "overall": {
+      "instances": 299,
+      "recall@10": 0.0033,
+      "recall@10_ci95": 0.0066,
+      "recall@30": 0.01,
+      "recall@30_ci95": 0.0113,
+      "mrr": 0.0024,
+      "mrr_ci95": 0.0023,
+      "candidateRecall": 0.1037,
+      "candidateRecall_ci95": 0.0346,
+      "meanPoolSize": 247
+    },
+    "byPopularity": {
+      "note": "Split at 50 MovieLens ratings. Exposure bias means raw recall partly rewards popularity; a large gap here indicates the model is leaning on it.",
+      "popular": {
+        "instances": 176,
+        "recall@10": 0,
+        "recall@10_ci95": 0,
+        "recall@30": 0.0114,
+        "recall@30_ci95": 0.0157,
+        "mrr": 0.002,
+        "mrr_ci95": 0.0012,
+        "candidateRecall": 0.1534,
+        "candidateRecall_ci95": 0.0534,
+        "meanPoolSize": 246
+      },
+      "obscure": {
+        "instances": 123,
+        "recall@10": 0.0081,
+        "recall@10_ci95": 0.0159,
+        "recall@30": 0.0081,
+        "recall@30_ci95": 0.0159,
+        "mrr": 0.003,
+        "mrr_ci95": 0.0053,
+        "candidateRecall": 0.0325,
+        "candidateRecall_ci95": 0.0315,
+        "meanPoolSize": 249
+      }
+    }
+  }
+}

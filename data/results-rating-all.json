@@ -1,0 +1,51 @@
+{
+  "model": "rating",
+  "description": "Ranks by TMDB vote_average (min 100 votes) — ignores the user's picks entirely",
+  "seed": 42,
+  "split": "all",
+  "limit": 300,
+  "instancesEvaluated": 299,
+  "skipped": 1,
+  "recordedAt": "2026-07-30T20:21:05.268Z",
+  "report": {
+    "overall": {
+      "instances": 299,
+      "recall@10": 0.0334,
+      "recall@10_ci95": 0.0204,
+      "recall@30": 0.0702,
+      "recall@30_ci95": 0.029,
+      "mrr": 0.0108,
+      "mrr_ci95": 0.0056,
+      "candidateRecall": 0.1037,
+      "candidateRecall_ci95": 0.0346,
+      "meanPoolSize": 247
+    },
+    "byPopularity": {
+      "note": "Split at 50 MovieLens ratings. Exposure bias means raw recall partly rewards popularity; a large gap here indicates the model is leaning on it.",
+      "popular": {
+        "instances": 176,
+        "recall@10": 0.0568,
+        "recall@10_ci95": 0.0343,
+        "recall@30": 0.1193,
+        "recall@30_ci95": 0.048,
+        "mrr": 0.018,
+        "mrr_ci95": 0.0094,
+        "candidateRecall": 0.1534,
+        "candidateRecall_ci95": 0.0534,
+        "meanPoolSize": 246
+      },
+      "obscure": {
+        "instances": 123,
+        "recall@10": 0,
+        "recall@10_ci95": 0,
+        "recall@30": 0,
+        "recall@30_ci95": 0,
+        "mrr": 0.0005,
+        "mrr_ci95": 0.0006,
+        "candidateRecall": 0.0325,
+        "candidateRecall_ci95": 0.0315,
+        "meanPoolSize": 249
+      }
+    }
+  }
+}

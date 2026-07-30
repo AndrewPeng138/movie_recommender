@@ -42,6 +42,7 @@ module.exports = [
                 fetch: 'readonly',
                 URL: 'readonly',
                 URLSearchParams: 'readonly',
+                Buffer: 'readonly',
                 setTimeout: 'readonly',
                 clearTimeout: 'readonly',
             },
