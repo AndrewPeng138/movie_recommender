@@ -786,186 +786,44 @@
         }
 
         /**
-         * Core recommendation pipeline: gather candidates, score them, render the top 30.
+         * Requests recommendations from the server and renders them.
          *
-         * Extracted from getRecommendations() so that button state management lives in exactly one
-         * place and cannot be bypassed by an early return or a thrown error.
+         * The entire pipeline -- candidate generation, detail fetching, scoring, and ranking -- now
+         * runs server-side behind a cache. This previously looped in the browser, issuing up to ~200
+         * sequential round-trips and taking 30-60 seconds; it is now one request.
+         *
+         * Moving it also fixed four bugs that lived in the removed code: candidates were only ever
+         * scored against the first pick that surfaced them, TMDB's recommendations list was discarded
+         * entirely, ties broke by pick order, and one failed request silently dropped ~20 candidates.
          */
         async function buildAndRenderRecommendations() {
-            const allRecs = new Map(); // Use Map to track movies and their match count
-            const seenIds = new Set();
-
-            // Get recommendations for each selected movie
-            for (const movie of selectedMovies) {
-                console.log(`Getting recommendations for: ${movie.title}`);
-                
-                try {
-                    // Get both similar movies AND recommendations from TMDB
-                    const [similarData, recsData] = await Promise.all([
-                        fetchJson(`${API_URL}/movie/${movie.id}/similar`),
-                        fetchJson(`${API_URL}/movie/${movie.id}/recommendations`)
-                    ]);
-                    
-                    // Combine results
-                    const combined = [
-                        ...(similarData.results || []),
-                        ...(recsData.results || [])
-                    ];
-                    
-                    // Process each recommendation
-                    for (const rec of combined.slice(0, 20)) {
-                        if (!selectedMovies.some(m => m.id === rec.id)) {
-                            // Fetch full details to compare
-                            if (!seenIds.has(rec.id)) {
-                                const details = await fetchJson(`${API_URL}/movie/${rec.id}`);
-                                seenIds.add(rec.id);
-                                
-                                // Calculate match score for this reference movie
-                                const matchScore = calculateMatchScore(details, movie);
-                                
-                                // Check if this movie was already recommended for another user movie
-                                if (allRecs.has(rec.id)) {
-                                    const existing = allRecs.get(rec.id);
-                                    existing.matchCount++;
-                                    existing.similarToMovies.push(movie.title);
-                                    // Take the higher individual score, then add multi-match bonus
-                                    existing.baseScore = Math.max(existing.baseScore, matchScore.total);
-                                    existing.matchBreakdown = matchScore.breakdown; // Keep latest breakdown
-                                } else {
-                                    allRecs.set(rec.id, {
-                                        ...details,
-                                        baseScore: matchScore.total,
-                                        matchCount: 1,
-                                        similarToMovies: [movie.title],
-                                        matchBreakdown: matchScore.breakdown,
-                                        year: details.release_date ? details.release_date.substring(0, 4) : 'N/A'
-                                    });
-                                }
-                            } else if (allRecs.has(rec.id)) {
-                                // Already fetched, just increment count
-                                const existing = allRecs.get(rec.id);
-                                if (!existing.similarToMovies.includes(movie.title)) {
-                                    existing.matchCount++;
-                                    existing.similarToMovies.push(movie.title);
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Error fetching recommendations for ${movie.title}:`, error);
-                }
-            }
-
-            // Convert Map to array and calculate final scores with multi-match bonus
-            const finalRecs = Array.from(allRecs.values()).map(movie => {
-                let finalScore = movie.baseScore;
-                
-                // Multi-match bonus: +10 points per additional matching movie
-                if (movie.matchCount > 1) {
-                    const multiBonus = (movie.matchCount - 1) * 10;
-                    finalScore = Math.min(finalScore + multiBonus, 100);
-                }
-                
-                return {
-                    ...movie,
-                    matchScore: finalScore,
-                    multiMatchBonus: movie.matchCount > 1 ? (movie.matchCount - 1) * 10 : 0
-                };
+            const response = await fetch(`${API_URL}/recommend`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ movieIds: selectedMovies.map(m => m.id) })
             });
 
-            // Sort by match score. Array.prototype.sort is stable, so equal scores retain Map
-            // insertion order - which follows the order movies were selected. See KNOWN ISSUES.
-            finalRecs.sort((a, b) => b.matchScore - a.matchScore);
-
-            // Display top 30
-            displayRecommendations(finalRecs.slice(0, 30));
-        }
-
-        /**
-         * Scores how well a candidate movie matches one of the user's selections.
-         *
-         * Additive model: every candidate starts at a base of 60 on the reasoning that TMDB already
-         * vouched for it, then earns points for genre overlap, a shared director, shared actors, era
-         * proximity, and rating quality. Capped at 100.
-         *
-         * The weights here were hand-tuned by trial and error (see the "REDUCED from"/"INCREASED from"
-         * notes below) with no way to measure whether any adjustment helped. Three limitations are
-         * worth knowing before adjusting anything:
-         *
-         *   1. The base of 60 is constant for every candidate, so it carries no ranking information.
-         *      Realistic totals cluster around 70-88, which makes the ranking weakly discriminative.
-         *   2. Rarity is ignored - sharing "Drama" scores the same as sharing "Film-Noir".
-         *   3. `reference.actors` holds only 3 names while candidates are compared on their top 10,
-         *      so actor overlap almost never fires. Director match is likewise rare.
-         *
-         * Re-tuning the numbers cannot fix 1-3; they need a different model. Retained as-is so it can
-         * serve as the measured baseline once an evaluation harness exists.
-         *
-         * @param {object} candidate - Full TMDB details for the candidate (with `credits`).
-         * @param {object} reference - One of the user's selections, as stored by selectMovie().
-         * @returns {{total: number, breakdown: object}} Score out of 100 plus per-factor contributions.
-         */
-        function calculateMatchScore(candidate, reference) {
-            let score = 60; // Base score (TMDB already thinks it's similar) - INCREASED from 50
-            const breakdown = {
-                base: 60,
-                genre: 0,
-                director: 0,
-                actors: 0,
-                year: 0,
-                rating: 0
-            };
-
-            // 1. Genre Overlap (up to 15 points) - REDUCED from 25
-            const candGenres = candidate.genres?.map(g => g.id) || [];
-            const refGenres = reference.genres?.map(g => g.id) || [];
-            const genreOverlap = candGenres.filter(g => refGenres.includes(g)).length;
-            
-            if (genreOverlap >= 3) breakdown.genre = 15;
-            else if (genreOverlap === 2) breakdown.genre = 10;
-            else if (genreOverlap === 1) breakdown.genre = 5;
-            score += breakdown.genre;
-
-            // 2. Director Match (15 points)
-            const candDirector = candidate.credits?.crew?.find(c => c.job === 'Director')?.name;
-            if (candDirector && candDirector === reference.director) {
-                breakdown.director = 15;
-                score += 15;
+            if (!response.ok) {
+                let message = `Request failed (${response.status})`;
+                try {
+                    const body = await response.json();
+                    if (body && typeof body.error === 'string') message = body.error;
+                } catch {
+                    // Non-JSON error body - keep the status-based message.
+                }
+                throw new Error(message);
             }
 
-            // 3. Actor Overlap (up to 15 points)
-            const candActors = candidate.credits?.cast?.slice(0, 10).map(a => a.name) || [];
-            const refActors = reference.actors || [];
-            const actorOverlap = candActors.filter(a => refActors.includes(a)).length;
-            
-            breakdown.actors = Math.min(actorOverlap * 7, 15);
-            score += breakdown.actors;
+            const { results, meta } = await response.json();
+            console.log(`Recommendations: ${meta.returned} of ${meta.candidatePoolSize} candidates ` +
+                `in ${meta.durationMs}ms`);
 
-            // 4. Era/Year Proximity (up to 5 points) - REDUCED from 10
-            const candYear = candidate.release_date ? parseInt(candidate.release_date.substring(0, 4)) : 0;
-            const refYear = parseInt(reference.year) || 0;
-            
-            if (candYear && refYear) {
-                const yearDiff = Math.abs(candYear - refYear);
-                if (yearDiff <= 2) breakdown.year = 5;
-                else if (yearDiff <= 5) breakdown.year = 3;
-                else if (yearDiff <= 10) breakdown.year = 2;
-                else if (yearDiff <= 20) breakdown.year = 1;
-                score += breakdown.year;
+            // Partial results are reported rather than silently presented as complete.
+            if (meta.failedCandidates > 0) {
+                console.warn(`${meta.failedCandidates} candidate lookups failed; results may be incomplete.`);
             }
 
-            // 5. Rating Quality Bonus (up to 10 points) - REDUCED from 20
-            const rating = candidate.vote_average || 0;
-            if (rating >= 8.0) breakdown.rating = 10;
-            else if (rating >= 7.5) breakdown.rating = 7;
-            else if (rating >= 7.0) breakdown.rating = 5;
-            else if (rating >= 6.5) breakdown.rating = 3;
-            score += breakdown.rating;
-
-            return {
-                total: Math.min(Math.round(score), 100),
-                breakdown
-            };
+            displayRecommendations(results);
         }
 
         /**
@@ -1045,15 +903,15 @@
                         ));
                     }
 
-                    const similarTo = movie.similarToMovies && movie.similarToMovies.length > 0
-                        ? movie.similarToMovies.join(', ')
+                    const similarTo = movie.similarTo && movie.similarTo.length > 0
+                        ? movie.similarTo.join(', ')
                         : 'N/A';
                     scoreBox.appendChild(textDiv('match-similar', `Similar to: ${similarTo}`));
 
-                    if (movie.matchBreakdown) {
+                    if (movie.breakdown) {
                         const parts = BREAKDOWN_LABELS
-                            .filter(([key]) => movie.matchBreakdown[key] > 0)
-                            .map(([key, label]) => `${label} (+${movie.matchBreakdown[key]})`);
+                            .filter(([key]) => movie.breakdown[key] > 0)
+                            .map(([key, label]) => `${label} (+${movie.breakdown[key]})`);
 
                         if (parts.length > 0) {
                             scoreBox.appendChild(textDiv('match-breakdown', parts.join('  ')));

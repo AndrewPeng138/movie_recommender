@@ -37,6 +37,7 @@ const {
     getRecommendations,
     getKeywords
 } = require('./lib/tmdb');
+const { recommend, requirePicks } = require('./lib/recommend');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -153,6 +154,27 @@ app.get('/api/movie/:tmdbId/keywords', route(async (req, res) => {
 }));
 
 /**
+ * POST /api/recommend
+ *
+ * Builds recommendations for a set of selected movies.
+ *
+ * This replaces a browser-side loop that issued up to ~200 sequential round-trips and took 30-60
+ * seconds. The same work now happens server-side in parallel behind the cache, in one request.
+ *
+ * @param {object} req.body
+ * @param {Array<number|string>} req.body.movieIds - 3 to 10 TMDB movie ids.
+ * @param {string} [req.body.generator] - Candidate source. Only "tmdb" is registered today; the seam
+ *   exists so collaborative filtering can be added without reworking this route.
+ * @returns {object} `{ results[], meta }` where meta reports pool size, timing, and how many
+ *   sub-requests failed — so partial results are visible rather than silently looking complete.
+ */
+app.post('/api/recommend', route(async (req, res) => {
+    const pickIds = requirePicks(req.body?.movieIds);
+    const generator = req.body?.generator || 'tmdb';
+    res.json(await recommend(pickIds, { generator }));
+}));
+
+/**
  * Error middleware.
  *
  * Maps TmdbError onto its intended HTTP status so clients can tell a bad request (400) from an
@@ -170,6 +192,11 @@ app.use((err, req, res, _next) => {
         if (err.status >= 500) {
             console.error(`${req.method} ${req.path} -> ${err.status}: ${err.message}`);
         }
+        return res.status(err.status).json({ error: err.message });
+    }
+
+    // Validation errors from lib/recommend.js carry their own status.
+    if (typeof err.status === 'number' && err.status < 500) {
         return res.status(err.status).json({ error: err.message });
     }
 
