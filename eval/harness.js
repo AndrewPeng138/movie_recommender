@@ -60,6 +60,7 @@ const baselines = require('../lib/score-baselines');
  */
 const MODELS = {
     legacy: require('../lib/score-legacy'),
+    fixed: require('../lib/rank'),
     random: baselines.random,
     popularity: baselines.popularity,
     rating: baselines.rating,

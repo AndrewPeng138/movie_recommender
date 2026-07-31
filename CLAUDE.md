@@ -139,6 +139,30 @@ If a test suite is ever added, prefer `node:test` over adding a framework depend
 
 ## Working with the user
 
+### Phase checklist discipline (required)
+
+**At the start of every phase, build a detailed todo list from the plan's own bullets for that
+phase — one todo per bullet — and do not move on until every item is either done or explicitly
+deferred with a stated reason.**
+
+This exists because it has already failed once. Phase 4 shipped with only one of its three planned
+items; MMR and cosine-decomposition explainability were silently omitted because reordering the
+phases left them without the TF-IDF vectors they depended on. Nobody noticed until the user asked
+directly. The plan is the source of truth for a phase's scope, not the parts that happened to be
+convenient.
+
+Concretely:
+
+1. Read the plan's section for the phase and enumerate every bullet as a todo.
+2. Add the phase's verification steps and the deployment gate as todos too.
+3. Before proposing a commit, walk the list and state the status of each item.
+4. **Anything not done gets named out loud**, with the reason, and is moved somewhere explicit in
+   the plan — never dropped in silence.
+
+A deferred item is fine. An unmentioned one is not.
+
+### Other
+
 - **Check in at the end of every phase**, and before any major design decision — anything that
   changes the API contract, adds a dependency or dataset, or alters the scoring model's shape.
 - **Verify claims rather than asserting them.** Run the command, read the output, report what it
