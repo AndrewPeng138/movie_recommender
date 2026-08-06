@@ -1265,21 +1265,57 @@
         }
 
         /**
+         * TMDB poster widths offered to the browser for the result grid.
+         *
+         * Capped at w500 on purpose. w500 is what the grid already requested, and it is a close fit
+         * for the widest rendered poster (283px at 2x density). Offering w780 as well would let
+         * high-density desktops pick something *heavier* than today — the opposite of the point.
+         */
+        const POSTER_WIDTHS = [185, 342, 500];
+
+        /**
+         * Rendered width of a result poster at each breakpoint. Mirrors the `.movie-grid` and
+         * portrait-card rules in the stylesheet:
+         *
+         *   portrait phone  96px  (.movie-card is a 96px column plus content)
+         *   small landscape 170px (minmax(140px, 1fr), ~3 columns in 532px of content)
+         *   tablet          205px (minmax(190px, 1fr), ~4 columns in 864px)
+         *   desktop         283px (minmax(240px, 1fr), 4 columns in 1184px)
+         *
+         * These must be kept in step with the CSS by hand. A stale value here is the one way this
+         * goes visibly wrong: too small a number and the browser fetches an image with less detail
+         * than the space it lands in, so posters look soft. There is no way to catch that in a test
+         * without a layout engine — it needs a real device.
+         */
+        const POSTER_SIZES = '(max-width: 560px) and (orientation: portrait) 96px, ' +
+            '(max-width: 560px) 170px, (max-width: 900px) 205px, 283px';
+
+        /**
          * Builds a poster <img> element.
          *
          * @param {string|null} posterPath - TMDB poster_path, or null/undefined if absent.
-         * @param {string} size - TMDB image size segment, e.g. 'w92' or 'w500'.
+         * @param {string} size - TMDB image size segment, e.g. 'w92' or 'w500'. Also the fallback
+         *   for browsers that ignore srcset.
          * @param {string} title - Movie title, used as alt text.
          * @param {string} className - CSS class for the element.
          * @param {number} w - Placeholder width.
          * @param {number} h - Placeholder height.
+         * @param {string} [sizes] - Rendered width per breakpoint. When given, the browser is offered
+         *   POSTER_WIDTHS and picks one using this plus the device's pixel density. Omitted for the
+         *   small fixed-size posters, where w92 is already smaller than any variant worth offering.
          * @returns {HTMLImageElement}
          */
-        function buildPoster(posterPath, size, title, className, w, h) {
+        function buildPoster(posterPath, size, title, className, w, h, sizes) {
             const img = document.createElement('img');
             img.src = posterPath
                 ? `https://image.tmdb.org/t/p/${size}${posterPath}`
                 : placeholderPoster(w, h, 'No Image');
+            if (posterPath && sizes) {
+                img.srcset = POSTER_WIDTHS
+                    .map(n => `https://image.tmdb.org/t/p/w${n}${posterPath} ${n}w`)
+                    .join(', ');
+                img.sizes = sizes;
+            }
             // Assigning via the property (not an HTML attribute string) means a title containing
             // quotes or angle brackets cannot break out of the markup.
             img.alt = title || 'Movie poster';
@@ -1819,7 +1855,8 @@
 
                     content.appendChild(scoreBox);
                     card.append(
-                        buildPoster(movie.poster_path, 'w500', movie.title, 'movie-poster', 280, 400),
+                        buildPoster(movie.poster_path, 'w500', movie.title, 'movie-poster', 280, 400,
+                        POSTER_SIZES),
                         content
                     );
                     movieGrid.appendChild(card);
