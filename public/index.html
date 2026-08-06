@@ -240,8 +240,19 @@
 
         .movie-poster {
             width: 100%;
-            height: 400px;
+            /*
+             * TMDB posters are 2:3 (500x750, 780x1170, ...), so matching that ratio means
+             * `object-fit: cover` has nothing to crop at any column width.
+             *
+             * This replaces a fixed `height: 400px`, which broke as soon as the column was not ~267px
+             * wide. On a portrait phone at two columns the column is ~160px, where the natural height
+             * is ~240px — forcing 400px made the image scale up to cover the box and crop its left and
+             * right edges. Desktop was cropping slightly too, just vertically and less visibly.
+             */
+            aspect-ratio: 2 / 3;
+            height: auto;
             object-fit: cover;
+            display: block;
         }
 
         .movie-card-content {
@@ -394,15 +405,33 @@
 
             h2 { font-size: 1.15em; }
 
-            /* Two columns rather than one: posters stay legible and far less scrolling is needed. */
+            /* Fallback for a very narrow *landscape* window, where a single column wastes width. */
             .movie-grid {
                 grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
                 gap: 12px;
             }
 
-            .movie-card h3 { font-size: 1em; }
-            .movie-meta { font-size: 0.78em; }
-            .match-score { font-size: 0.85em; }
+            /*
+             * At two columns on a 375px screen each card is ~160px wide. The desktop 20px content
+             * padding would consume 40px of that, leaving 119px for text; 12px leaves 135px.
+             */
+            .movie-card-content { padding: 12px; }
+            .movie-card h3 { font-size: 1em; margin-bottom: 6px; }
+            .movie-meta { font-size: 0.78em; margin-bottom: 5px; }
+            .match-score { font-size: 0.85em; padding: 4px 8px; }
+            .match-breakdown, .match-similar { font-size: 0.72em; }
+
+            /*
+             * Clamp the synopsis to three lines rather than hiding it. At this width the 100-character
+             * excerpt wraps to six or seven lines and pushes the match score and its explanation far
+             * below the fold — which is the part worth reading.
+             */
+            .movie-meta:nth-of-type(3) {
+                display: -webkit-box;
+                -webkit-line-clamp: 3;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }
 
             /* Chips wrap to full width so long titles are not truncated on a narrow screen. */
             .movie-chip {
@@ -419,6 +448,23 @@
                 width: 100%;
                 font-size: 1em;
             }
+        }
+
+        /*
+         * Portrait phones get a single column.
+         *
+         * Orientation rather than width alone, because the two cases genuinely differ: a phone held
+         * upright has ~330px of usable width, where two columns leave each poster ~160px — small, and
+         * with only ~135px for the title, score, and explanation beside it. Turned sideways the same
+         * phone is ~844px, which already fits three comfortably via the 900px rules above.
+         */
+        @media (max-width: 560px) and (orientation: portrait) {
+            .movie-grid { grid-template-columns: 1fr; }
+
+            /* A full-width card has room for the desktop padding again. */
+            .movie-card-content { padding: 16px; }
+            .movie-card h3 { font-size: 1.15em; }
+            .movie-meta { font-size: 0.85em; }
         }
 
         /* Nothing should ever scroll the page sideways, whatever the content. */
