@@ -47,6 +47,12 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { getMovie, getSimilar, getRecommendations, cache } = require('../lib/tmdb');
 const { loadUserProfiles, loadPopularity, isDownloaded } = require('../lib/movielens');
 const collaborative = require('../lib/collaborative');
+const { applyMmr } = require('../lib/score');
+
+/** Candidates considered by MMR. Wider than the cutoff so it has room to swap in alternatives. */
+const MMR_WINDOW = 120;
+/** Slots MMR fills. Matches what the app displays. */
+const MMR_LIMIT = 30;
 const metrics = require('./metrics');
 
 const baselines = require('../lib/score-baselines');
@@ -58,6 +64,47 @@ const baselines = require('../lib/score-baselines');
  * complexity. A model that fails to beat `popularity` is not ranking on taste, and one that fails to
  * beat `multimatch` is getting nothing from its content features.
  */
+/**
+ * Builds the TF-IDF model from its committed artifacts.
+ *
+ * MovieLens quality averages are recomputed here with the evaluated users excluded -- the same
+ * leakage control the CF model uses. A user's own rating of a held-out film must not raise that
+ * film's quality score, because that rating is precisely what is being withheld.
+ *
+ * @param {Set<number>} evaluatedUsers
+ * @param {object} params - Hyperparameter overrides.
+ * @returns {object} A model exposing rankCandidates().
+ */
+function buildTfidfModel(evaluatedUsers, params) {
+    const fs2 = require('fs');
+    const { createModel } = require('../lib/score');
+    const { loadMovieLensRatings } = require('../lib/quality');
+
+    const idfPath = path.join(__dirname, '..', 'data', 'idf.json');
+    const qualityPath = path.join(__dirname, '..', 'data', 'quality.json');
+
+    if (!fs2.existsSync(idfPath) || !fs2.existsSync(qualityPath)) {
+        console.error('Missing data/idf.json or data/quality.json. Run scripts/build-idf.js and '
+            + 'scripts/build-quality.js first.');
+        process.exit(1);
+    }
+
+    const { idf } = JSON.parse(fs2.readFileSync(idfPath, 'utf8'));
+    const artifact = JSON.parse(fs2.readFileSync(qualityPath, 'utf8'));
+    const { byTmdbId, corpusMean } = loadMovieLensRatings({ excludeUsers: evaluatedUsers });
+    const awards = new Map(Object.entries(artifact.awards).map(([id, v]) => [Number(id), v]));
+
+    console.log(`TF-IDF model: ${Object.keys(idf).length.toLocaleString()} IDF features, `
+        + `${byTmdbId.size.toLocaleString()} rated films (${evaluatedUsers.size} users excluded), `
+        + `${awards.size.toLocaleString()} with awards`);
+
+    return createModel({
+        idf,
+        quality: { movieLens: byTmdbId, movieLensMean: corpusMean, awards },
+        params
+    });
+}
+
 const MODELS = {
     legacy: require('../lib/score-legacy'),
     fixed: require('../lib/rank'),
@@ -144,6 +191,9 @@ function parseArgs() {
         model: get('--model', 'legacy'),
         generator: get('--generator', 'tmdb'),
         targets: get('--targets', 'all'),
+        params: get('--params', ''),
+        mmr: args.includes('--mmr'),
+        mmrLambda: Number(get('--mmr-lambda', 0.8)),
         verbose: args.includes('--verbose')
     };
 }
@@ -266,7 +316,7 @@ function buildInstances({ limit, seed, split, targetMode }) {
  * @param {object} model - A scoring model exposing `rankCandidates`.
  * @returns {Promise<object|null>} Per-instance outcome, or null if unevaluable.
  */
-async function runInstance(instance, model, { generator, cfModel }) {
+async function runInstance(instance, model, { generator, cfModel, mmr = false, mmrLambda = 0.8 }) {
     const pickDetails = (await Promise.all(instance.picks.map(safeDetails))).filter(Boolean);
     if (pickDetails.length < MIN_PICKS) return null;
 
@@ -307,10 +357,38 @@ async function runInstance(instance, model, { generator, cfModel }) {
         candidates: ids.map(id => detailsById.get(id)).filter(Boolean)
     }));
 
-    const ranked = model.rankCandidates(hydrated, pickIds).map(r => r.id);
+    let scored = model.rankCandidates(hydrated, pickIds);
+
+    // Diversity reordering, applied only when requested.
+    //
+    // Every result recorded before 2026-08-04 ran WITHOUT this: lib/score.js implements MMR inside
+    // finalise(), and the harness only ever called rankCandidates(). MMR was built and never
+    // measured. It is applied to the head of the list and the tail is appended in relevance order,
+    // so metrics beyond the cutoff (MRR) still see a complete ranking.
+    if (mmr && typeof applyMmr === 'function' && scored[0]?.vector) {
+        // MUST mirror lib/score.js finalise(): MMR chooses WHICH films appear, then the selection is
+        // sorted by score for display. If the harness ordered them differently from production, the
+        // measured MRR would describe a ranking users never see.
+        const head = applyMmr(scored.slice(0, MMR_WINDOW), MMR_LIMIT, mmrLambda)
+            .sort((a, b) => b.score - a.score || a.id - b.id);
+        const chosen = new Set(head.map(c => c.id));
+        scored = [...head, ...scored.filter(c => !chosen.has(c.id))];
+    }
+
+    const ranked = scored.map(r => r.id);
+
+    // Franchise membership for the ranked films, so metrics can measure flooding.
+    // belongs_to_collection already arrives in the details payload, so this is free.
+    const collectionOf = new Map();
+    for (const entry of scored) {
+        const collection = entry.details?.belongs_to_collection
+            || detailsById.get(entry.id)?.belongs_to_collection;
+        if (collection) collectionOf.set(entry.id, collection.id);
+    }
 
     return {
         ranked,
+        collectionOf,
         targets: new Set(instance.targetIds),
         // The pool is reported separately from the ranked output so a generation ceiling stays
         // visible independently of how the model ordered things.
@@ -320,7 +398,8 @@ async function runInstance(instance, model, { generator, cfModel }) {
 }
 
 async function main() {
-    const { limit, seed, split, model: modelName, generator, targets, verbose } = parseArgs();
+    const { limit, seed, split, model: modelName, generator, targets, params, mmr, mmrLambda,
+        verbose } = parseArgs();
     const started = Date.now();
 
     if (!isDownloaded()) {
@@ -328,14 +407,17 @@ async function main() {
         process.exit(1);
     }
 
-    const model = MODELS[modelName];
-    if (!model) {
-        console.error(`Unknown model "${modelName}". Available: ${Object.keys(MODELS).join(', ')}`);
+    let model = MODELS[modelName];
+    if (!model && modelName !== 'tfidf') {
+        console.error(`Unknown model "${modelName}". Available: ${Object.keys(MODELS).join(', ')}, tfidf`);
         process.exit(1);
     }
 
-    console.log(`Evaluation harness — model "${model.name}", generator "${generator}"`);
-    console.log(`  ${model.description}`);
+    // tfidf is built after instances exist, so the evaluated users can be excluded from its
+    // MovieLens quality averages.
+    const pendingTfidf = modelName === 'tfidf';
+    console.log(`Evaluation harness — model "${pendingTfidf ? 'tfidf' : model.name}", generator "${generator}"`);
+    if (!pendingTfidf) console.log(`  ${model.description}`);
     console.log(`  seed ${seed} | split ${split} | limit ${limit}\n`);
 
     const popularity = loadPopularity();
@@ -371,13 +453,26 @@ async function main() {
         }
     }
 
+    // Built here rather than at module load because it needs the evaluated user set: their MovieLens
+    // ratings must be excluded from the quality averages, or a user's own rating of a held-out film
+    // would raise that film's score — leaking exactly what is being withheld.
+    if (pendingTfidf) {
+        const overrides = {};
+        for (const pair of params.split(',').filter(Boolean)) {
+            const [key, value] = pair.split('=');
+            overrides[key] = Number(value);
+        }
+        model = buildTfidfModel(new Set(instances.map(i => i.userId)), overrides);
+        console.log(`  ${model.description}`);
+    }
+
     console.log('\nRunning...\n');
 
     const outcomes = [];
     let skipped = 0;
 
     for (let i = 0; i < instances.length; i++) {
-        const result = await runInstance(instances[i], model, { generator, cfModel });
+        const result = await runInstance(instances[i], model, { generator, cfModel, mmr, mmrLambda });
 
         if (!result) { skipped++; continue; }
 
@@ -409,14 +504,21 @@ async function main() {
         `(${stats.hits.toLocaleString()} served from the frozen corpus)`);
 
     // Persist so the number is in the repository, not just a terminal scrollback.
+    // The split MUST be in the filename. Without it a test-split run silently overwrites the
+    // all-split results for the same model — which happened, and destroyed a recorded baseline until
+    // it was recovered from git.
     const outPath = path.join(__dirname, '..', 'data',
-        `results-${model.name}-${generator}-${targets}.json`);
+        `results-${model.name}-${generator}-${targets}-${split}`
+        + `${params ? `-${params.replace(/[=,]/g, '')}` : ''}`
+        + `${mmr ? `-mmr${mmrLambda}` : ''}.json`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, `${JSON.stringify({
         model: model.name,
         description: model.description,
         generator,
         targetMode: targets,
+        mmr,
+        mmrLambda: mmr ? mmrLambda : null,
         cfStats: cfModel ? cfModel.stats : null,
         seed, split, limit,
         instancesEvaluated: outcomes.length,
@@ -428,7 +530,17 @@ async function main() {
     console.log(`\nResults written to ${path.relative(process.cwd(), outPath)}`);
 }
 
-main().catch(error => {
-    console.error('\nHarness failed:', error);
-    process.exit(1);
-});
+/**
+ * Exported so eval/sweep.js can reuse instance construction and candidate hydration rather than
+ * reimplementing the protocol — a second implementation is a second thing that can silently
+ * disagree with the first, and the whole value of the harness rests on both measuring the same thing.
+ */
+module.exports = { buildInstances, runInstance, safeDetails, candidatesFor, MODELS, splitFor };
+
+// Only run the CLI when invoked directly, not when imported by the sweep driver.
+if (require.main === module) {
+    main().catch(error => {
+        console.error('\nHarness failed:', error);
+        process.exit(1);
+    });
+}

@@ -151,6 +151,37 @@ function computeBlock(instances, pickTargets, cutoffs) {
     report.poolHitRate = Number(mean(pooled).toFixed(4));
     report.poolHitRate_ci95 = Number(confidenceInterval95(pooled).toFixed(4));
 
+    // Franchise flooding. Recall and precision are blind to a list of eight Batman films — every one
+    // is "relevant" — but it is a poor recommendation list. This counts how many DISTINCT franchises
+    // appear in the top 30, so diversity has a number attached instead of being assumed.
+    //
+    // Films outside any collection each count as their own, since they cannot be redundant with
+    // anything. Only computed when the caller supplies collection data.
+    const withCollections = usable.filter(i => i.collectionOf);
+    if (withCollections.length > 0) {
+        const cutoff = Math.max(...cutoffs);
+        report[`distinctCollections@${cutoff}`] = Number(mean(withCollections.map(i => {
+            const seen = new Set();
+            for (const id of i.ranked.slice(0, cutoff)) {
+                const collection = i.collectionOf.get(id);
+                seen.add(collection ? `c:${collection}` : `film:${id}`);
+            }
+            return seen.size;
+        })).toFixed(2));
+
+        // The largest single franchise in the list — a direct read on flooding. 1.0 means every film
+        // came from a different franchise; 8 means eight slots went to one series.
+        report[`largestFranchise@${cutoff}`] = Number(mean(withCollections.map(i => {
+            const counts = new Map();
+            for (const id of i.ranked.slice(0, cutoff)) {
+                const collection = i.collectionOf.get(id);
+                if (!collection) continue;
+                counts.set(collection, (counts.get(collection) || 0) + 1);
+            }
+            return counts.size === 0 ? 1 : Math.max(...counts.values());
+        })).toFixed(2));
+    }
+
     report.meanTargets = Math.round(mean(usable.map(i => pickTargets(i).size)));
     report.meanPoolSize = Math.round(mean(usable.map(i => i.pool.size)));
 

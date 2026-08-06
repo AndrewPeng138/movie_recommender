@@ -827,16 +827,22 @@
         }
 
         /**
-         * Human-readable labels for each scoring factor, used to build the per-card breakdown.
-         * Order determines display order.
+         * Icons for the feature types the server reports in `contributions`.
+         *
+         * The server used to send fixed category totals ("Genres +10"); it now names the specific
+         * features behind a match ("director: Christopher Nolan"), because cosine similarity
+         * decomposes exactly into per-feature contributions. Naming *which* director or keyword drove
+         * the match is strictly more useful than a category score.
          */
-        const BREAKDOWN_LABELS = [
-            ['genre', '🎭 Genres'],
-            ['director', '🎬 Director'],
-            ['actors', '👥 Actors'],
-            ['year', '📅 Era'],
-            ['rating', '⭐ Quality']
-        ];
+        const FEATURE_ICONS = {
+            g: '🎭',      // genre
+            k: '🔑',      // keyword
+            c: '👥',      // cast
+            d: '🎬',      // director
+            w: '✍️',      // writer
+            dec: '📅',    // decade
+            lang: '🌐'    // original language
+        };
 
         /**
          * Creates a <div> with a class and plain text content.
@@ -896,23 +902,32 @@
                     scoreBox.className = 'match-score';
                     scoreBox.append(document.createTextNode(`Match: ${movie.matchScore}%`));
 
-                    if (movie.matchCount > 1) {
-                        scoreBox.appendChild(textDiv(
-                            'match-multi',
-                            `🔥 Matches ${movie.matchCount} of your movies! (+${movie.multiMatchBonus})`
-                        ));
-                    }
+                    // The old "🔥 Matches N of your movies!" badge is deliberately gone. Under the
+                    // current model that count saturated at the number of picks -- nearly every film
+                    // shares *something* with every pick (a language, a genre) -- so it rendered
+                    // identically on all 30 cards and said nothing. The named contributions below
+                    // carry the explanation instead.
 
                     const similarTo = movie.similarTo && movie.similarTo.length > 0
                         ? movie.similarTo.join(', ')
                         : 'N/A';
-                    scoreBox.appendChild(textDiv('match-similar', `Similar to: ${similarTo}`));
+                    scoreBox.appendChild(textDiv('match-similar', `Because you liked: ${similarTo}`));
 
-                    if (movie.breakdown) {
-                        const parts = BREAKDOWN_LABELS
+                    // Named features behind the match, strongest first.
+                    if (movie.contributions && movie.contributions.length > 0) {
+                        const parts = movie.contributions.map(c =>
+                            `${FEATURE_ICONS[c.type] || '•'} ${c.label}`);
+                        scoreBox.appendChild(textDiv('match-breakdown', parts.join('   ')));
+                    } else if (movie.breakdown) {
+                        // Legacy shape, still emitted if the TF-IDF artifacts failed to load and the
+                        // server fell back to the old scorer.
+                        const legacyLabels = [
+                            ['genre', '🎭 Genres'], ['director', '🎬 Director'],
+                            ['actors', '👥 Actors'], ['year', '📅 Era'], ['rating', '⭐ Quality']
+                        ];
+                        const parts = legacyLabels
                             .filter(([key]) => movie.breakdown[key] > 0)
                             .map(([key, label]) => `${label} (+${movie.breakdown[key]})`);
-
                         if (parts.length > 0) {
                             scoreBox.appendChild(textDiv('match-breakdown', parts.join('  ')));
                         }
