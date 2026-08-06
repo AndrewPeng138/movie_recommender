@@ -5,493 +5,763 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Movie Recommender</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* ===========================================================================================
+           DESIGN TOKENS
+
+           Direction: a darkened screening room. The previous design put poster artwork inside a white
+           card on a purple gradient, which fought the very thing the page exists to show. Inverting it
+           — dark blue-biased ground, one warm projection-amber accent — leaves the posters as the only
+           saturated colour on screen.
+
+           Everything is expressed as custom properties so the light-mode override below only has to
+           restate the palette, not re-style any component.
+           =========================================================================================== */
+
+        :root {
+            --ground:      #0B0F14;   /* auditorium dark; blue-biased, not neutral grey */
+            --surface:     #141A22;   /* cards, dropdown */
+            --surface-2:   #1B242F;   /* raised elements, chips */
+            --line:        #232D3A;
+            --line-soft:   #1A2029;
+
+            --ink:         #E8EDF2;
+            --ink-2:       #B4C2CF;
+            --muted:       #8494A4;
+
+            --accent:      #EFA845;   /* projection amber — the lamp */
+            --accent-soft: #3A2B14;
+            --accent-ink:  #1A1206;
+
+            --danger:      #FF8A80;
+            --danger-soft: #3A1714;
+
+            --radius:      10px;
+            --radius-sm:   6px;
+
+            --shadow:      0 1px 2px rgba(0,0,0,.5), 0 12px 32px -12px rgba(0,0,0,.7);
+            --shadow-lift: 0 2px 6px rgba(0,0,0,.55), 0 24px 48px -16px rgba(0,0,0,.85);
+
+            /* No webfonts: there is no build step, and a CDN link would add a dependency and a
+               silent-fallback risk. These are deliberately chosen system stacks.
+               Display = condensed, which is film-poster convention. Mono = every numeral, because
+               this is fundamentally a scoring tool and digits are data. */
+            --display: 'Bahnschrift SemiCondensed', 'Franklin Gothic Medium', 'Arial Narrow',
+                       'Helvetica Neue Condensed', 'Roboto Condensed', sans-serif;
+            --body:    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system,
+                       'Helvetica Neue', Arial, sans-serif;
+            --mono:    ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+
+            color-scheme: dark;
         }
 
+        /* Light mode: the same room with the lights up. Warm off-white rather than pure #FFF — a
+           white panel behind poster artwork reads as a clinical form, which is exactly the look this
+           redesign is replacing. The cream is slight on purpose; enough to take the glare off, not
+           enough to look tinted. Ink stays near-black, so contrast is unaffected. */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --ground:      #E6E2DA;
+                --surface:     #FBF8F3;
+                --surface-2:   #F2EDE4;
+                --line:        #D5CEC2;
+                --line-soft:   #E5DFD4;
+
+                --ink:         #14110D;
+                --ink-2:       #3F3A33;
+                --muted:       #6B645B;
+
+                --accent:      #9A5A0C;   /* darkened so it passes contrast on a light ground */
+                --accent-soft: #F6E7CE;
+                --accent-ink:  #FFFFFF;
+
+                --danger:      #A4231A;
+                --danger-soft: #FDECEA;
+
+                --shadow:      0 1px 2px rgba(12,18,24,.06), 0 8px 24px -10px rgba(12,18,24,.18);
+                --shadow-lift: 0 2px 4px rgba(12,18,24,.08), 0 18px 40px -14px rgba(12,18,24,.28);
+
+                color-scheme: light;
+            }
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: var(--body);
+            background: var(--ground);
+            color: var(--ink);
             min-height: 100vh;
-            padding: 20px;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1240px;
             margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 40px;
+            padding: 32px 28px 64px;
+            background: none;      /* the white card is gone; the ground is the design */
+            border-radius: 0;
+            box-shadow: none;
         }
 
+        /* ===========================================================================================
+           HEADER
+           =========================================================================================== */
+
         h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 2.5em;
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            font-size: 2em;
+            font-weight: 600;
+            color: var(--ink);
+            text-align: left;
+            margin-bottom: 4px;
         }
 
         .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
+            color: var(--muted);
+            text-align: left;
+            font-size: .95em;
+            margin-bottom: 28px;
         }
 
-        .search-section {
-            margin-bottom: 30px;
+        h2 {
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-size: 1.05em;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 14px;
         }
 
-        .search-box {
-            position: relative;
-            margin-bottom: 20px;
-        }
+        /* ===========================================================================================
+           SEARCH
+           =========================================================================================== */
+
+        .search-section { margin-bottom: 28px; }
+        .search-box { position: relative; }
 
         input[type="text"] {
             width: 100%;
-            padding: 15px;
+            padding: 14px 16px;
             font-size: 16px;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            transition: border-color 0.3s;
+            font-family: var(--body);
+            color: var(--ink);
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            transition: border-color .2s;
         }
+
+        input[type="text"]::placeholder { color: var(--muted); }
 
         input[type="text"]:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--accent);
         }
 
         .suggestions {
             position: absolute;
-            top: 100%;
+            top: calc(100% + 6px);
             left: 0;
             right: 0;
-            background: white;
-            border: 2px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 10px 10px;
-            max-height: 400px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            max-height: 420px;
             overflow-y: auto;
             z-index: 1000;
             display: none;
+            box-shadow: var(--shadow);
         }
 
         .suggestion-item {
-            padding: 12px 15px;
+            padding: 10px 12px;
             cursor: pointer;
-            transition: background 0.2s;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid var(--line-soft);
             display: flex;
             gap: 12px;
             align-items: center;
+            transition: background .15s;
         }
+
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover { background: var(--surface-2); }
 
         .suggestion-poster {
-            width: 50px;
-            height: 75px;
+            width: 58px;
+            aspect-ratio: 2 / 3;
+            height: auto;
             object-fit: cover;
-            border-radius: 5px;
+            border-radius: 4px;
             flex-shrink: 0;
+            background: var(--surface-2);
         }
 
-        .suggestion-content {
-            flex: 1;
-        }
-
-        .suggestion-item:hover {
-            background: #f8f8f8;
-        }
-
-        .suggestion-title {
-            font-weight: 600;
-            color: #333;
-        }
+        .suggestion-content { flex: 1; min-width: 0; }
+        .suggestion-title { font-weight: 600; color: var(--ink); }
 
         .suggestion-meta {
-            font-size: 0.85em;
-            color: #666;
-            margin-top: 4px;
+            font-family: var(--mono);
+            font-size: .78em;
+            color: var(--muted);
+            margin-top: 3px;
         }
 
         .loading {
             text-align: center;
-            padding: 15px;
-            color: #666;
+            padding: 16px;
+            color: var(--muted);
         }
 
-        .selected-movies {
-            margin-bottom: 30px;
-        }
+        /* ===========================================================================================
+           SELECTED PICKS — a filmstrip rather than form chips
+           =========================================================================================== */
 
-        .selected-movies h2 {
-            color: #333;
-            margin-bottom: 15px;
-        }
+        .selected-movies { margin-bottom: 28px; }
 
         .movie-chips {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
         }
 
         .movie-chip {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 25px;
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            color: var(--ink);
+            padding: 6px 8px 6px 6px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             gap: 10px;
-            animation: slideIn 0.3s ease;
+            font-size: .9em;
+            animation: slideIn .25s ease;
         }
 
         .movie-chip-poster {
-            width: 30px;
-            height: 45px;
+            width: 38px;
+            aspect-ratio: 2 / 3;
+            height: auto;
             object-fit: cover;
-            border-radius: 4px;
+            border-radius: 3px;
         }
 
-        .movie-chip-content {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .movie-chip-content { display: flex; align-items: center; gap: 9px; }
 
         @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: none; }
         }
 
         .remove-btn {
-            background: rgba(255,255,255,0.3);
+            background: none;
             border: none;
-            color: white;
-            width: 20px;
-            height: 20px;
+            color: var(--muted);
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 15px;
+            line-height: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.2s;
+            transition: background .15s, color .15s;
         }
 
         .remove-btn:hover {
-            background: rgba(255,255,255,0.5);
+            background: var(--danger-soft);
+            color: var(--danger);
         }
 
+        .warning {
+            color: var(--muted);
+            margin-top: 10px;
+            font-size: .88em;
+        }
+
+        /* ===========================================================================================
+           PRIMARY ACTION
+           =========================================================================================== */
+
         .get-recommendations {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--accent);
+            color: var(--accent-ink);
             border: none;
-            padding: 15px 40px;
-            font-size: 18px;
-            border-radius: 10px;
+            padding: 13px 32px;
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-weight: 600;
+            font-size: 1em;
+            border-radius: var(--radius);
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform .15s, filter .15s;
             display: block;
             margin: 0 auto;
         }
 
         .get-recommendations:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+            transform: translateY(-1px);
+            filter: brightness(1.08);
         }
 
-        .get-recommendations:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .get-recommendations:disabled { opacity: .35; cursor: not-allowed; }
 
-        .recommendations {
-            margin-top: 40px;
-        }
+        /* ===========================================================================================
+           RESULTS
+           =========================================================================================== */
+
+        .recommendations { margin-top: 44px; }
 
         .recommendations h2 {
-            color: #333;
+            text-align: left;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--line-soft);
             margin-bottom: 20px;
-            text-align: center;
+            font-size: 1.3em;
+            color: var(--ink);
         }
 
+        /* 240px rather than the previous 280px: with posters no longer cropped they are ~30% taller,
+           so narrower columns keep more results on screen at once. */
         .movie-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 22px 18px;
         }
 
         .movie-card {
-            background: #f8f8f8;
-            border-radius: 15px;
+            background: none;
+            border-radius: var(--radius);
             padding: 0;
-            overflow: hidden;
-            transition: transform 0.2s, box-shadow 0.2s;
-            animation: fadeIn 0.5s ease;
+            overflow: visible;
+            animation: fadeIn .4s ease;
         }
 
         .movie-poster {
             width: 100%;
-            /*
-             * TMDB posters are 2:3 (500x750, 780x1170, ...), so matching that ratio means
-             * `object-fit: cover` has nothing to crop at any column width.
-             *
-             * This replaces a fixed `height: 400px`, which broke as soon as the column was not ~267px
-             * wide. On a portrait phone at two columns the column is ~160px, where the natural height
-             * is ~240px — forcing 400px made the image scale up to cover the box and crop its left and
-             * right edges. Desktop was cropping slightly too, just vertically and less visibly.
-             */
+            /* TMDB posters are 2:3, so matching that ratio means object-fit has nothing to crop at
+               any column width. Replaced a fixed height that only matched at ~267px wide. */
             aspect-ratio: 2 / 3;
             height: auto;
             object-fit: cover;
             display: block;
+            border-radius: var(--radius-sm);
+            background: var(--surface-2);
+            box-shadow: var(--shadow);
+            transition: transform .2s, box-shadow .2s;
         }
 
-        .movie-card-content {
-            padding: 20px;
+        .movie-card:hover { transform: none; box-shadow: none; }
+
+        .movie-card:hover .movie-poster {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lift);
         }
+
+        .movie-card-content { padding: 12px 2px 0; }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: scale(0.9);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-
-        .movie-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: none; }
         }
 
         .movie-card h3 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 1.2em;
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .015em;
+            line-height: 1.15;
+            color: var(--ink);
+            margin-bottom: 6px;
+            font-size: 1.1em;
+            text-wrap: balance;
         }
 
         .movie-meta {
-            color: #666;
-            font-size: 0.9em;
-            margin-bottom: 8px;
+            font-family: var(--mono);
+            color: var(--muted);
+            font-size: .76em;
+            margin-bottom: 5px;
         }
 
-        .movie-genres {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-            margin-top: 10px;
+        /* The synopsis is supporting detail, not the point — the match explanation below is. */
+        .movie-meta:nth-of-type(3) {
+            font-family: var(--body);
+            font-size: .82em;
+            color: var(--ink-2);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin: 8px 0;
         }
 
-        .genre-tag {
-            background: #667eea;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.8em;
-        }
+        /* ===========================================================================================
+           MATCH SCORE AND EXPLANATION
+
+           The app's differentiator is saying WHY a film was recommended, so this is styled as
+           readable evidence rather than a coloured badge.
+           =========================================================================================== */
 
         .match-score {
-            background: #4caf50;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 8px;
-            font-weight: bold;
-            display: inline-block;
+            background: none;
+            color: var(--accent);
+            padding: 0;
+            border-radius: 0;
+            font-family: var(--mono);
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            font-size: 1em;
+            display: block;
             margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--line-soft);
         }
 
-        /*
-         * Sub-elements of the match-score block. These previously lived as inline style attributes
-         * inside a template string; moving them here keeps presentation in the stylesheet and let the
-         * card be built with safe DOM calls instead of interpolated HTML.
-         */
         .match-multi {
-            font-size: 0.85em;
+            font-size: .8em;
             margin-top: 5px;
-            font-weight: bold;
-            color: #fff;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 3px 8px;
-            border-radius: 5px;
+            font-weight: 600;
+            color: var(--accent);
+            background: var(--accent-soft);
+            padding: 2px 7px;
+            border-radius: var(--radius-sm);
             display: inline-block;
         }
 
         .match-similar {
-            font-size: 0.8em;
-            margin-top: 5px;
+            font-family: var(--body);
+            font-size: .78em;
+            margin-top: 6px;
             font-weight: normal;
+            color: var(--muted);
         }
 
+        /* Grouped match explanation: one row per feature type, category named once on the left.
+           Replaces a flat run of emoji-prefixed values, which repeated a glyph per item and never
+           actually said what the category was. */
         .match-breakdown {
-            font-size: 0.75em;
-            margin-top: 5px;
+            font-family: var(--body);
+            font-size: .78em;
+            margin-top: 8px;
             font-weight: normal;
+            color: var(--ink-2);
+            display: grid;
+            gap: 3px;
         }
 
-        .warning {
-            text-align: center;
-            color: #ff6b6b;
-            margin-top: 10px;
-            font-size: 0.9em;
+        .match-row {
+            display: grid;
+            /* Fixed label column so the values line up down the card. */
+            grid-template-columns: 62px 1fr;
+            gap: 8px;
+            align-items: baseline;
+        }
+
+        .match-label {
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            font-size: .88em;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .match-values {
+            color: var(--ink-2);
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .score-line {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .score-pct { flex-shrink: 0; }
+
+        .score-meter {
+            display: flex;
+            gap: 2px;
+            flex: 1;
+            height: 10px;
+            align-items: stretch;
+            min-width: 0;
+        }
+
+        .score-meter i {
+            flex: 1;
+            background: var(--line);
+            border-radius: 1px;
+        }
+
+        .score-meter i.on { background: var(--accent); }
+
+        .match-dots { display: inline-flex; gap: 3px; margin-right: 4px; }
+
+        .match-dots i {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--line);
+            display: block;
+        }
+
+        .match-dots i.on { background: var(--accent); }
+
+        /* ===========================================================================================
+           DETAIL DIALOG
+
+           Weighted toward information, not artwork. Streaming services give ~85% of the panel to a
+           large still and squeeze the actual details into a strip; here the backdrop is a 180px
+           banner and everything below it is content — synopsis, why it matched, cast and crew.
+           =========================================================================================== */
+
+        .detail-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .72);
+            backdrop-filter: blur(3px);
+            z-index: 2000;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 28px 20px;
+            overflow-y: auto;
+        }
+
+        .detail-overlay[hidden] { display: none; }
+
+        .detail-dialog {
+            position: relative;
+            width: min(860px, 100%);
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lift);
+            overflow: hidden;
+            animation: dialogIn .18s ease;
+        }
+
+        @keyframes dialogIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: none; }
+        }
+
+        .detail-banner {
+            /* Explicit width plus a fixed height, NOT `aspect-ratio` with a max-height: under that
+               combination the browser derives the width from the clamped height, so the banner
+               stopped short of the dialog edge and left a white gutter.
+
+               400px against the 860px dialog is roughly 2.1:1 — cropped from the 16:9 source, but
+               wide-format rather than the letterbox strip a shorter banner produced, and still
+               under a third of a typical panel so the details stay the bulk of it. */
+            width: 100%;
+            height: 400px;
+            max-height: 42vh;
+            background-size: cover;
+            background-position: center 30%;
+            background-color: var(--surface-2);
+            display: flex;
+            align-items: flex-end;
+            padding: 22px 26px;
+            position: relative;
+        }
+
+        /* Scrim so the title stays readable over any artwork, however bright. */
+        .detail-banner::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(0,0,0,.92) 0%, rgba(0,0,0,.45) 55%, rgba(0,0,0,.15) 100%);
+        }
+
+        .detail-banner-text { position: relative; z-index: 1; }
+
+        .detail-title {
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .03em;
+            font-size: 1.7em;
+            font-weight: 600;
+            color: #fff;
+            margin: 0 0 4px;
+            text-align: left;
+            text-wrap: balance;
+        }
+
+        .detail-meta {
+            font-family: var(--mono);
+            font-size: .78em;
+            color: rgba(255,255,255,.86);
+            margin: 0;
+        }
+
+        .detail-close {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            z-index: 3;
+            background: rgba(0,0,0,.55);
+            border: 1px solid rgba(255,255,255,.25);
+            color: #fff;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .detail-close:hover { background: rgba(0,0,0,.8); }
+
+        .detail-body { padding: 26px 30px 30px; }
+
+        .detail-loading {
+            color: var(--muted);
+            padding: 12px 0;
+        }
+
+        .detail-synopsis {
+            color: var(--ink-2);
+            line-height: 1.6;
+            margin-bottom: 22px;
+            font-size: .95em;
+        }
+
+        .detail-section { margin-bottom: 20px; }
+        .detail-section:last-child { margin-bottom: 0; }
+
+        .detail-section h3 {
+            font-family: var(--display);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-size: .82em;
+            color: var(--accent);
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--line-soft);
+        }
+
+        .detail-row {
+            display: grid;
+            grid-template-columns: 130px 1fr;
+            gap: 12px;
+            padding: 4px 0;
+            font-size: .9em;
+            align-items: baseline;
+        }
+
+        .detail-label {
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .detail-value { color: var(--ink-2); line-height: 1.5; }
+
+        @media (max-width: 560px) {
+            .detail-overlay { padding: 0; }
+            .detail-dialog { border-radius: 0; min-height: 100vh; width: 100%; }
+            .detail-banner { height: 210px; max-height: 30vh; padding: 16px; }
+            .detail-title { font-size: 1.3em; }
+            .detail-body { padding: 16px; }
+            .detail-row { grid-template-columns: 92px 1fr; gap: 8px; font-size: .85em; }
+        }
+
+        /* Whole card opens the detail dialog. */
+        .movie-card { cursor: pointer; }
+
+        .movie-card:focus-visible {
+            outline: 3px solid var(--accent);
+            outline-offset: 4px;
+            border-radius: var(--radius-sm);
         }
 
         .empty-state {
             text-align: center;
-            color: #999;
-            padding: 40px;
-            font-size: 1.1em;
+            color: var(--muted);
+            padding: 48px;
+            font-size: 1.05em;
+            grid-column: 1 / -1;
         }
 
         /* ===========================================================================================
-           RESPONSIVE
-           ===========================================================================================
-
-           The page had no media queries at all and was desktop-only. The specific failure on a phone:
-           `body` contributes 20px of horizontal padding and `.container` another 40px, so a 375px
-           screen leaves 255px of content -- but `.movie-grid` demanded `minmax(280px, 1fr)`, making
-           every card wider than the space available. That is what produced horizontal scrolling.
-
-           Each breakpoint therefore reduces padding AND the grid minimum together; changing one
-           without the other just moves the overflow.
+           STATUS AND ERRORS
            =========================================================================================== */
 
-        /* Tablets and small laptops. */
-        @media (max-width: 900px) {
-            body { padding: 12px; }
-
-            .container {
-                padding: 24px;
-                border-radius: 14px;
-            }
-
-            h1 { font-size: 2em; }
-
-            .movie-grid {
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 16px;
-            }
+        .status-banner {
+            margin: 16px 0;
+            padding: 12px 14px;
+            border-radius: var(--radius-sm);
+            font-size: .92em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            color: var(--ink-2);
         }
 
-        /* Phones. */
-        @media (max-width: 560px) {
-            body { padding: 8px; }
-
-            .container {
-                padding: 16px 14px;
-                border-radius: 10px;
-            }
-
-            h1 {
-                font-size: 1.5em;
-                margin-bottom: 6px;
-            }
-
-            .subtitle {
-                font-size: 0.9em;
-                margin-bottom: 20px;
-            }
-
-            h2 { font-size: 1.15em; }
-
-            /* Fallback for a very narrow *landscape* window, where a single column wastes width. */
-            .movie-grid {
-                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-                gap: 12px;
-            }
-
-            /*
-             * At two columns on a 375px screen each card is ~160px wide. The desktop 20px content
-             * padding would consume 40px of that, leaving 119px for text; 12px leaves 135px.
-             */
-            .movie-card-content { padding: 12px; }
-            .movie-card h3 { font-size: 1em; margin-bottom: 6px; }
-            .movie-meta { font-size: 0.78em; margin-bottom: 5px; }
-            .match-score { font-size: 0.85em; padding: 4px 8px; }
-            .match-breakdown, .match-similar { font-size: 0.72em; }
-
-            /*
-             * Clamp the synopsis to three lines rather than hiding it. At this width the 100-character
-             * excerpt wraps to six or seven lines and pushes the match score and its explanation far
-             * below the fold — which is the part worth reading.
-             */
-            .movie-meta:nth-of-type(3) {
-                display: -webkit-box;
-                -webkit-line-clamp: 3;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-            }
-
-            /* Chips wrap to full width so long titles are not truncated on a narrow screen. */
-            .movie-chip {
-                width: 100%;
-                justify-content: space-between;
-            }
-
-            .suggestions { max-height: 55vh; }
-
-            /* 16px prevents iOS Safari from zooming in when the field receives focus. */
-            input[type="text"] { font-size: 16px; }
-
-            .get-recommendations {
-                width: 100%;
-                font-size: 1em;
-            }
+        .status-banner.error {
+            background: var(--danger-soft);
+            color: var(--danger);
+            border-color: var(--danger);
         }
 
-        /*
-         * Portrait phones get a single column.
-         *
-         * Orientation rather than width alone, because the two cases genuinely differ: a phone held
-         * upright has ~330px of usable width, where two columns leave each poster ~160px — small, and
-         * with only ~135px for the title, score, and explanation beside it. Turned sideways the same
-         * phone is ~844px, which already fits three comfortably via the 900px rules above.
-         */
-        @media (max-width: 560px) and (orientation: portrait) {
-            .movie-grid { grid-template-columns: 1fr; }
-
-            /* A full-width card has room for the desktop padding again. */
-            .movie-card-content { padding: 16px; }
-            .movie-card h3 { font-size: 1.15em; }
-            .movie-meta { font-size: 0.85em; }
+        .status-banner.info {
+            background: var(--surface);
+            color: var(--ink-2);
         }
 
-        /* Nothing should ever scroll the page sideways, whatever the content. */
-        html, body { max-width: 100%; overflow-x: hidden; }
-        .movie-card h3, .movie-chip span { overflow-wrap: anywhere; }
+        .status-banner button {
+            margin-left: auto;
+            background: none;
+            border: 1px solid currentColor;
+            color: inherit;
+            border-radius: var(--radius-sm);
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: .9em;
+            font-family: var(--body);
+        }
+
+        .spinner {
+            width: 15px;
+            height: 15px;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ===========================================================================================
-           ACCESSIBILITY
+           ACCESSIBILITY  (carried forward from 6.1 — behaviour unchanged, colours re-themed)
            =========================================================================================== */
 
-        /* Keyboard-highlighted suggestion. Matches :hover so mouse and keyboard look identical. */
         .suggestion-item.active {
-            background: #eef0fb;
-            outline: 2px solid #667eea;
+            background: var(--surface-2);
+            outline: 2px solid var(--accent);
             outline-offset: -2px;
         }
 
-        /* Every interactive element needs a visible focus ring; several had none. */
         button:focus-visible,
         input:focus-visible,
         .suggestion-item:focus-visible {
-            outline: 3px solid #4c5fd7;
+            outline: 3px solid var(--accent);
             outline-offset: 2px;
         }
 
-        /* Announced to screen readers, invisible on screen. Not `display: none`, which would stop
-           screen readers reading it at all. */
         .sr-only {
             position: absolute;
             width: 1px;
@@ -505,58 +775,69 @@
         }
 
         /* ===========================================================================================
-           STATUS AND ERRORS
+           RESPONSIVE
            =========================================================================================== */
 
-        .status-banner {
-            margin: 16px 0;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 0.95em;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        @media (max-width: 900px) {
+            .container { padding: 24px 18px 48px; }
+            h1 { font-size: 1.7em; }
+            .movie-grid {
+                grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+                gap: 18px 14px;
+            }
         }
 
-        .status-banner.error {
-            background: #fdecea;
-            color: #a4231a;
-            border: 1px solid #f5c2be;
+        @media (max-width: 560px) {
+            .container { padding: 18px 14px 40px; }
+            h1 { font-size: 1.4em; }
+            .subtitle { font-size: .88em; margin-bottom: 20px; }
+            .movie-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px 12px; }
+            .get-recommendations { width: 100%; }
+            .suggestions { max-height: 55vh; }
+            input[type="text"] { font-size: 16px; }   /* below 16px iOS Safari zooms on focus */
+            .movie-chip { width: 100%; justify-content: space-between; }
         }
 
-        .status-banner.info {
-            background: #eef2ff;
-            color: #3730a3;
-            border: 1px solid #c7d2fe;
+        /* Portrait phones: a horizontal card.
+         *
+         * One full-width column with a 2:3 poster made each card ~650px tall, so thirty results meant
+         * roughly 19,500px of scrolling. Turning the card sideways — small poster left, details right —
+         * brings it to ~170px per card, about a third of the scrolling, and puts the title and match
+         * explanation beside the artwork instead of below the fold. */
+        @media (max-width: 560px) and (orientation: portrait) {
+            .movie-grid { grid-template-columns: 1fr; gap: 12px; }
+
+            .movie-card {
+                display: grid;
+                grid-template-columns: 96px 1fr;
+                gap: 14px;
+                background: var(--surface);
+                border: 1px solid var(--line-soft);
+                border-radius: var(--radius);
+                padding: 10px;
+                align-items: start;
+            }
+
+            .movie-poster { box-shadow: none; }
+            .movie-card:hover .movie-poster { transform: none; box-shadow: none; }
+
+            .movie-card-content { padding: 0; min-width: 0; }
+            .movie-card h3 { font-size: 1em; }
+            .movie-meta { font-size: .74em; }
+            .movie-meta:nth-of-type(3) { -webkit-line-clamp: 2; font-size: .78em; margin: 6px 0; }
+            .match-score { font-size: .9em; margin-top: 8px; padding-top: 8px; }
+            .match-similar, .match-breakdown { font-size: .72em; }
         }
 
-        .status-banner button {
-            margin-left: auto;
-            background: none;
-            border: 1px solid currentColor;
-            color: inherit;
-            border-radius: 6px;
-            padding: 4px 10px;
-            cursor: pointer;
-            font-size: 0.9em;
-        }
+        html, body { max-width: 100%; overflow-x: hidden; }
+        .movie-card h3, .movie-chip span { overflow-wrap: anywhere; }
 
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid currentColor;
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-            flex-shrink: 0;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Respect users who have asked the OS to reduce motion. */
         @media (prefers-reduced-motion: reduce) {
             .spinner { animation-duration: 2s; }
-            * { transition-duration: 0.01ms !important; }
+            *, *::before, *::after {
+                animation-duration: .01ms !important;
+                transition-duration: .01ms !important;
+            }
         }
     </style>
 </head>
@@ -619,6 +900,32 @@
         </div>
     </div>
 
+    <!--
+        Movie detail dialog. A sibling of .container, not a child, so it can cover the page.
+
+        Replaces an expand-in-place synopsis that could never have worked: the card text is truncated
+        to 100 characters before rendering, so un-clamping it revealed the same truncated string.
+
+        Deliberately weighted toward information rather than artwork — the backdrop is a banner strip,
+        not the content. Full synopsis, cast, crew, genres, and runtime are the point, plus the match
+        explanation, which is the thing this app has that others do not.
+
+        role="dialog" + aria-modal tells assistive technology the rest of the page is inert. Focus
+        moves in on open and returns to the card that opened it on close.
+    -->
+    <div id="detailOverlay" class="detail-overlay" hidden>
+        <div class="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+            <button type="button" class="detail-close" id="detailClose" aria-label="Close details">&times;</button>
+            <div class="detail-banner" id="detailBanner">
+                <div class="detail-banner-text">
+                    <h2 class="detail-title" id="detailTitle"></h2>
+                    <p class="detail-meta" id="detailMeta"></p>
+                </div>
+            </div>
+            <div class="detail-body" id="detailBody"></div>
+        </div>
+    </div>
+
     <script>
         /**
          * Movie Recommender — frontend.
@@ -649,6 +956,14 @@
         const MIN_MOVIES = 3;
         /** Maximum picks allowed. */
         const MAX_MOVIES = 10;
+        /**
+         * Segments in the match meter.
+         *
+         * 20 gives 5% resolution — fine enough to separate cards that differ by a few points, coarse
+         * enough that each segment stays visible at card width.
+         */
+        const SCORE_TICKS = 20;
+
         /** Debounce delay (ms) between keystrokes and firing a search. */
         const SEARCH_DEBOUNCE_MS = 500;
 
@@ -1276,22 +1591,38 @@
         }
 
         /**
-         * Icons for the feature types the server reports in `contributions`.
+         * Human-readable names for the feature types the server reports in `contributions`.
          *
-         * The server used to send fixed category totals ("Genres +10"); it now names the specific
-         * features behind a match ("director: Christopher Nolan"), because cosine similarity
-         * decomposes exactly into per-feature contributions. Naming *which* director or keyword drove
-         * the match is strictly more useful than a category score.
+         * These replace per-item emoji. An icon repeated once per value ("🔑 lgbt 🔑 gay theme
+         * 🔑 homophobia") is pure noise — it costs a glyph per item and never says what the category
+         * actually is. Stating the category once and listing its values under it is shorter and
+         * clearer.
+         *
+         * The server names the *specific* features behind a match rather than category totals,
+         * because cosine similarity decomposes exactly into per-feature contributions. Knowing it
+         * matched on Christopher Nolan is far more useful than "Director +15".
+         *
+         * `dec` (decade) has no entry: the server no longer sends it, because the release year is
+         * already on the card and "Era: 1990s" only restated it. `lang` survives but the server sends
+         * it only when the film is not in English, where it is a genuine reason.
          */
-        const FEATURE_ICONS = {
-            g: '🎭',      // genre
-            k: '🔑',      // keyword
-            c: '👥',      // cast
-            d: '🎬',      // director
-            w: '✍️',      // writer
-            dec: '📅',    // decade
-            lang: '🌐'    // original language
+        const FEATURE_GROUPS = {
+            d: 'Director',
+            w: 'Writer',
+            c: 'Cast',
+            k: 'Themes',
+            g: 'Genre',
+            lang: 'Language'
         };
+
+        /**
+         * Display order for those groups.
+         *
+         * Named people first: "same director" is the most concrete reason a recommendation can give.
+         * Themes next, then the broader descriptors, which are usually weak signals anyway — a shared
+         * genre carries little weight once rarity is accounted for.
+         */
+        const FEATURE_ORDER = ['d', 'w', 'c', 'k', 'g', 'lang'];
 
         /**
          * Creates a <div> with a class and plain text content.
@@ -1328,6 +1659,22 @@
                     const card = document.createElement('div');
                     card.className = 'movie-card';
 
+                    // The whole card opens the detail dialog. Keyboard-operable rather than
+                    // click-only: role + tabindex + Enter and Space, matching a real <button>.
+                    // aria-haspopup="dialog" tells assistive tech what activating it will do.
+                    card.setAttribute('role', 'button');
+                    card.setAttribute('tabindex', '0');
+                    card.setAttribute('aria-haspopup', 'dialog');
+                    card.setAttribute('aria-label', `${movie.title} — view details`);
+
+                    card.addEventListener('click', () => openDetails(movie, card));
+                    card.addEventListener('keydown', (e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        // Space would otherwise scroll the page.
+                        e.preventDefault();
+                        openDetails(movie, card);
+                    });
+
                     const content = document.createElement('div');
                     content.className = 'movie-card-content';
 
@@ -1335,9 +1682,10 @@
                     heading.textContent = movie.title;
 
                     const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
-                    const overview = movie.overview
-                        ? `${movie.overview.substring(0, 100)}...`
-                        : '';
+                    // Full text, clamped to two lines by CSS rather than cut here. Truncating to 100
+                    // characters is what made expand-in-place useless — unclamping revealed the same
+                    // truncated string. The dialog shows the whole synopsis regardless.
+                    const overview = movie.overview || '';
 
                     content.append(
                         heading,
@@ -1349,7 +1697,55 @@
                     // --- Match score block ---------------------------------------------------------
                     const scoreBox = document.createElement('div');
                     scoreBox.className = 'match-score';
-                    scoreBox.append(document.createTextNode(`Match: ${movie.matchScore}%`));
+
+                    // Percentage and meter share a line. The meter makes two cards at 68% and 71%
+                    // distinguishable at a glance, which the bare number does not; discrete ticks
+                    // rather than a smooth bar because segments are easier to compare between cards.
+                    const scoreLine = document.createElement('div');
+                    scoreLine.className = 'score-line';
+
+                    const pct = document.createElement('span');
+                    pct.className = 'score-pct';
+                    pct.textContent = `Match: ${movie.matchScore}%`;
+
+                    const meter = document.createElement('span');
+                    meter.className = 'score-meter';
+                    // Decorative: the adjacent text already states the value, so announcing the ticks
+                    // too would just be noise for a screen reader.
+                    meter.setAttribute('aria-hidden', 'true');
+                    const filled = Math.round((movie.matchScore / 100) * SCORE_TICKS);
+                    for (let i = 0; i < SCORE_TICKS; i++) {
+                        const tick = document.createElement('i');
+                        if (i < filled) tick.className = 'on';
+                        meter.appendChild(tick);
+                    }
+
+                    scoreLine.append(pct, meter);
+                    scoreBox.appendChild(scoreLine);
+
+                    // How many of the user's picks this film genuinely resembles. Meaningful again
+                    // now that the server filters attribution by relative similarity — previously
+                    // this saturated at the number of picks and read identically on every card.
+                    const matched = (movie.similarTo || []).length;
+                    if (matched > 1) {
+                        const multi = document.createElement('div');
+                        multi.className = 'match-multi';
+
+                        const dots = document.createElement('span');
+                        dots.className = 'match-dots';
+                        dots.setAttribute('aria-hidden', 'true');
+                        for (let i = 0; i < selectedMovies.length; i++) {
+                            const dot = document.createElement('i');
+                            if (i < matched) dot.className = 'on';
+                            dots.appendChild(dot);
+                        }
+
+                        const text = document.createElement('span');
+                        text.textContent = `matches ${matched} of your picks`;
+
+                        multi.append(dots, text);
+                        scoreBox.appendChild(multi);
+                    }
 
                     // The old "🔥 Matches N of your movies!" badge is deliberately gone. Under the
                     // current model that count saturated at the number of picks -- nearly every film
@@ -1362,11 +1758,43 @@
                         : 'N/A';
                     scoreBox.appendChild(textDiv('match-similar', `Because you liked: ${similarTo}`));
 
-                    // Named features behind the match, strongest first.
+                    // Named features behind the match, grouped by type.
+                    //
+                    // Grouping also removes a real duplicate: a writer-director shows up as two
+                    // separate contributions, so the flat list read "Frank Darabont, Frank Darabont".
+                    // Under group headings that becomes "Director: Frank Darabont / Writer: Frank
+                    // Darabont, Stephen King", which is the same information stated once each.
                     if (movie.contributions && movie.contributions.length > 0) {
-                        const parts = movie.contributions.map(c =>
-                            `${FEATURE_ICONS[c.type] || '•'} ${c.label}`);
-                        scoreBox.appendChild(textDiv('match-breakdown', parts.join('   ')));
+                        const byType = new Map();
+                        for (const c of movie.contributions) {
+                            if (!byType.has(c.type)) byType.set(c.type, []);
+                            byType.get(c.type).push(c.label);
+                        }
+
+                        const breakdown = document.createElement('div');
+                        breakdown.className = 'match-breakdown';
+
+                        for (const type of FEATURE_ORDER) {
+                            const values = byType.get(type);
+                            if (!values || values.length === 0) continue;
+
+                            const row = document.createElement('div');
+                            row.className = 'match-row';
+
+                            const label = document.createElement('span');
+                            label.className = 'match-label';
+                            label.textContent = FEATURE_GROUPS[type] || type;
+
+                            const value = document.createElement('span');
+                            value.className = 'match-values';
+                            // De-duplicated: the same name can legitimately appear twice within a type.
+                            value.textContent = [...new Set(values)].join(', ');
+
+                            row.append(label, value);
+                            breakdown.appendChild(row);
+                        }
+
+                        if (breakdown.childElementCount > 0) scoreBox.appendChild(breakdown);
                     } else if (movie.breakdown) {
                         // Legacy shape, still emitted if the TF-IDF artifacts failed to load and the
                         // server fell back to the old scorer.
@@ -1394,6 +1822,202 @@
             recommendationsSection.style.display = 'block';
             recommendationsSection.scrollIntoView({ behavior: 'smooth' });
         }
+
+        /* ===========================================================================================
+           MOVIE DETAIL DIALOG
+           =========================================================================================== */
+
+        const detailOverlay = document.getElementById('detailOverlay');
+        const detailBanner = document.getElementById('detailBanner');
+        const detailTitle = document.getElementById('detailTitle');
+        const detailMeta = document.getElementById('detailMeta');
+        const detailBody = document.getElementById('detailBody');
+        const detailClose = document.getElementById('detailClose');
+
+        /** Element that opened the dialog, so focus can be handed back on close. */
+        let detailOpener = null;
+
+        /**
+         * Incremented on every open. The in-flight fetch compares against it before rendering, so
+         * closing the dialog — or opening a different film — discards a response that is no longer
+         * wanted. Same problem the search box has, same fix.
+         */
+        let detailToken = 0;
+
+        /**
+         * Builds one labelled row in the details list.
+         *
+         * @param {string} label
+         * @param {string} value
+         * @returns {HTMLDivElement|null} Null when there is nothing to show, so callers can append
+         *   unconditionally without producing empty rows.
+         */
+        function detailRow(label, value) {
+            if (!value) return null;
+            const row = document.createElement('div');
+            row.className = 'detail-row';
+
+            const l = document.createElement('span');
+            l.className = 'detail-label';
+            l.textContent = label;
+
+            const v = document.createElement('span');
+            v.className = 'detail-value';
+            v.textContent = value;
+
+            row.append(l, v);
+            return row;
+        }
+
+        /**
+         * Formats a runtime in minutes as hours and minutes.
+         *
+         * @param {number} minutes
+         * @returns {string}
+         */
+        function formatRuntime(minutes) {
+            if (!minutes) return '';
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+
+        /**
+         * Opens the detail dialog for a recommendation.
+         *
+         * Full credits are not in the recommendation payload — it carries only what the card renders —
+         * so they are fetched on demand. The server caches TMDB responses, and every candidate was
+         * already fetched while scoring, so this is normally a cache hit and returns immediately.
+         *
+         * @param {object} movie - A result object from POST /api/recommend.
+         * @param {HTMLElement} opener - The card, so focus can return there on close.
+         */
+        async function openDetails(movie, opener) {
+            detailOpener = opener;
+            const token = ++detailToken;
+
+            detailTitle.textContent = movie.title;
+            detailMeta.textContent = '';
+            detailBody.replaceChildren();
+            detailBanner.style.backgroundImage = '';
+
+            detailOverlay.hidden = false;
+            // Stop the page behind scrolling while the dialog is open.
+            document.body.style.overflow = 'hidden';
+            detailClose.focus();
+
+            const loading = document.createElement('div');
+            loading.className = 'detail-loading';
+            loading.textContent = 'Loading details...';
+            detailBody.appendChild(loading);
+
+            let details = null;
+            try {
+                details = await fetchJson(`${API_URL}/movie/${movie.id}`);
+            } catch (error) {
+                console.error('Could not load details:', error);
+            }
+
+            // Closed, or a different film opened, while the request was in flight.
+            if (token !== detailToken || detailOverlay.hidden) return;
+
+            detailBody.replaceChildren();
+
+            if (details?.backdrop_path) {
+                detailBanner.style.backgroundImage =
+                    `url("https://image.tmdb.org/t/p/w1280${details.backdrop_path}")`;
+            }
+
+            const genres = (details?.genres || []).map(g => g.name).join(', ');
+            const metaBits = [
+                movie.year,
+                formatRuntime(details?.runtime),
+                genres,
+                movie.vote_average ? `★ ${movie.vote_average.toFixed(1)}/10` : ''
+            ].filter(Boolean);
+            detailMeta.textContent = metaBits.join('  •  ');
+
+            // --- Synopsis: the full text, which is what the card could not show ---------------------
+            const synopsis = document.createElement('p');
+            synopsis.className = 'detail-synopsis';
+            synopsis.textContent = details?.overview || movie.overview || 'No synopsis available.';
+            detailBody.appendChild(synopsis);
+
+            // --- Why it was recommended --------------------------------------------------------------
+            if (movie.similarTo?.length || movie.contributions?.length) {
+                const why = document.createElement('section');
+                why.className = 'detail-section';
+
+                const h = document.createElement('h3');
+                h.textContent = `Why this — ${movie.matchScore}% match`;
+                why.appendChild(h);
+
+                const rowSimilar = detailRow('Because you liked', (movie.similarTo || []).join(', '));
+                if (rowSimilar) why.appendChild(rowSimilar);
+
+                const byType = new Map();
+                for (const c of movie.contributions || []) {
+                    if (!byType.has(c.type)) byType.set(c.type, []);
+                    byType.get(c.type).push(c.label);
+                }
+                for (const type of FEATURE_ORDER) {
+                    const values = byType.get(type);
+                    if (!values) continue;
+                    const row = detailRow(FEATURE_GROUPS[type] || type, [...new Set(values)].join(', '));
+                    if (row) why.appendChild(row);
+                }
+
+                detailBody.appendChild(why);
+            }
+
+            // --- Cast and crew, from the fetched credits ---------------------------------------------
+            if (details?.credits) {
+                const crew = details.credits.crew || [];
+                const directors = [...new Set(crew.filter(c => c.job === 'Director').map(c => c.name))];
+                const writers = [...new Set(crew
+                    .filter(c => ['Writer', 'Screenplay', 'Story'].includes(c.job))
+                    .map(c => c.name))];
+                const cast = (details.credits.cast || []).slice(0, 6).map(c => c.name);
+
+                const section = document.createElement('section');
+                section.className = 'detail-section';
+
+                const h = document.createElement('h3');
+                h.textContent = 'Cast and crew';
+                section.appendChild(h);
+
+                for (const row of [
+                    detailRow('Director', directors.join(', ')),
+                    detailRow('Writers', writers.slice(0, 4).join(', ')),
+                    detailRow('Cast', cast.join(', '))
+                ]) {
+                    if (row) section.appendChild(row);
+                }
+
+                if (section.childElementCount > 1) detailBody.appendChild(section);
+            }
+        }
+
+        /** Closes the dialog and returns focus to whatever opened it. */
+        function closeDetails() {
+            detailOverlay.hidden = true;
+            document.body.style.overflow = '';
+            if (detailOpener) {
+                detailOpener.focus();
+                detailOpener = null;
+            }
+        }
+
+        detailClose.addEventListener('click', closeDetails);
+
+        // Clicking the dimmed area closes; clicking inside the dialog must not.
+        detailOverlay.addEventListener('click', (e) => {
+            if (e.target === detailOverlay) closeDetails();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !detailOverlay.hidden) closeDetails();
+        });
 
         /**
          * Restores any saved picks and renders the initial state.
