@@ -19,3 +19,12 @@ data/*
 # the manifest is what makes each result traceable to the corpus it was measured on.
 !data/results-*.json
 !data/corpus-manifest.json
+
+# The scoring artifacts MUST be committed -- the server reads them at boot.
+#
+# They are derived aggregates (an IDF table and per-film rating/award summaries), not the source
+# data, and rebuilding them needs the 19,204-file TMDB corpus plus the MovieLens dataset, neither of
+# which exists on Render. If these are missing, the server silently falls back to the legacy scorer
+# and the entire model upgrade does nothing.
+!data/idf.json
+!data/quality.json

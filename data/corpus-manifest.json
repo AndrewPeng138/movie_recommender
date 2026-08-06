@@ -1,9 +1,9 @@
 {
-  "frozenAt": "2026-07-30T19:36:50.143Z",
-  "expiresAt": "2027-07-30T19:36:50.144Z",
+  "frozenAt": "2026-07-31T18:42:43.768Z",
+  "expiresAt": "2027-07-31T18:42:43.777Z",
   "dataset": "ml-latest-small",
   "cacheDir": ".cache",
-  "entries": 19204,
+  "entries": 37852,
   "moviesWithTmdbId": 9734,
   "moviesRated": 9715,
   "note": "Frozen for evaluation reproducibility. Refresh deliberately and re-record the baseline in the same commit — see docs/CORPUS.md."
