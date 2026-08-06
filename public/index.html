@@ -623,6 +623,13 @@
 
         .detail-close:hover { background: rgba(0,0,0,.8); }
 
+        /* Touch input needs a 44px target — the platform minimum on both iOS and Android, and 34px
+           is a genuine miss on a phone rather than a cosmetic one. Keyed on pointer type, not width:
+           a tablet in landscape is wider than any breakpoint here and still finger-driven. */
+        @media (pointer: coarse) {
+            .detail-close { width: 44px; height: 44px; font-size: 24px; }
+        }
+
         .detail-body { padding: 26px 30px 30px; }
 
         .detail-loading {
