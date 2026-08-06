@@ -42,7 +42,45 @@ const { recommend, requirePicks } = require('./lib/recommend');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+/**
+ * Decides whether a browser origin may call this API.
+ *
+ * `app.use(cors())` previously allowed **every** origin, meaning anyone who found this URL could
+ * point their own app at it and spend our TMDB quota, CPU, and bandwidth. The API key itself is never
+ * at risk — it stays server-side — but the server would be acting as a free proxy for them.
+ *
+ * Requests with **no Origin header** are allowed: browsers only send `Origin` on cross-origin
+ * requests, so this covers the page served from this server, plus curl and health checks.
+ *
+ * Note this is *defence in depth*, not the main protection. In normal operation the browser never
+ * makes a cross-origin request at all — Vercel rewrites `/api/*` through to this server, so the page
+ * and the API share an origin from the browser's point of view. That is also why no Vercel
+ * preview-domain pattern is needed here.
+ *
+ * **CORS does not stop `curl`.** It is a browser rule and only prevents *other websites' JavaScript*
+ * from reading responses. Scripted abuse needs rate limiting, which is tracked separately.
+ *
+ * @param {string|undefined} origin - The request's Origin header.
+ * @returns {boolean}
+ */
+function isAllowedOrigin(origin) {
+    if (!origin) return true;
+
+    const configured = (process.env.ALLOWED_ORIGINS || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+    return [...configured, 'http://localhost:3001', 'http://127.0.0.1:3001'].includes(origin);
+}
+
+app.use(cors({
+    origin(origin, callback) {
+        // Decline the CORS headers rather than throwing. Throwing would surface as a 500 and imply
+        // the server broke; a missing header is what a blocked origin should actually see.
+        callback(null, isAllowedOrigin(origin));
+    }
+}));
 app.use(express.json());
 
 // NOTE: __dirname, not a bare relative path. `express.static('public')` resolves against

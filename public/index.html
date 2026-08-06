@@ -383,13 +383,20 @@
          */
 
         /**
-         * API base URL. In production the Express server serves this page from public/, so the API
-         * shares an origin and a relative path works. In local development the frontend may be opened
-         * directly, so the port is named explicitly.
+         * API base path.
+         *
+         * Always relative, and it works in all three environments for the same reason: the API is
+         * always same-origin from the browser's point of view.
+         *
+         *   local dev  -> Express serves this page and the API together
+         *   Render     -> same, in production
+         *   Vercel     -> Vercel serves the page and *rewrites* /api/* through to Render (see
+         *                 vercel.json), so the browser never sees a second domain
+         *
+         * That rewrite is why there is no host detection here and no CORS configuration to keep in
+         * sync — including for preview deployments, whose domains change per branch.
          */
-        const API_URL = window.location.hostname === 'localhost'
-            ? 'http://localhost:3001/api'
-            : '/api';
+        const API_URL = '/api';
 
         /** Minimum picks required before recommendations can be requested. */
         const MIN_MOVIES = 3;
