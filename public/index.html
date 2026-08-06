@@ -342,6 +342,176 @@
             padding: 40px;
             font-size: 1.1em;
         }
+
+        /* ===========================================================================================
+           RESPONSIVE
+           ===========================================================================================
+
+           The page had no media queries at all and was desktop-only. The specific failure on a phone:
+           `body` contributes 20px of horizontal padding and `.container` another 40px, so a 375px
+           screen leaves 255px of content -- but `.movie-grid` demanded `minmax(280px, 1fr)`, making
+           every card wider than the space available. That is what produced horizontal scrolling.
+
+           Each breakpoint therefore reduces padding AND the grid minimum together; changing one
+           without the other just moves the overflow.
+           =========================================================================================== */
+
+        /* Tablets and small laptops. */
+        @media (max-width: 900px) {
+            body { padding: 12px; }
+
+            .container {
+                padding: 24px;
+                border-radius: 14px;
+            }
+
+            h1 { font-size: 2em; }
+
+            .movie-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 16px;
+            }
+        }
+
+        /* Phones. */
+        @media (max-width: 560px) {
+            body { padding: 8px; }
+
+            .container {
+                padding: 16px 14px;
+                border-radius: 10px;
+            }
+
+            h1 {
+                font-size: 1.5em;
+                margin-bottom: 6px;
+            }
+
+            .subtitle {
+                font-size: 0.9em;
+                margin-bottom: 20px;
+            }
+
+            h2 { font-size: 1.15em; }
+
+            /* Two columns rather than one: posters stay legible and far less scrolling is needed. */
+            .movie-grid {
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                gap: 12px;
+            }
+
+            .movie-card h3 { font-size: 1em; }
+            .movie-meta { font-size: 0.78em; }
+            .match-score { font-size: 0.85em; }
+
+            /* Chips wrap to full width so long titles are not truncated on a narrow screen. */
+            .movie-chip {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .suggestions { max-height: 55vh; }
+
+            /* 16px prevents iOS Safari from zooming in when the field receives focus. */
+            input[type="text"] { font-size: 16px; }
+
+            .get-recommendations {
+                width: 100%;
+                font-size: 1em;
+            }
+        }
+
+        /* Nothing should ever scroll the page sideways, whatever the content. */
+        html, body { max-width: 100%; overflow-x: hidden; }
+        .movie-card h3, .movie-chip span { overflow-wrap: anywhere; }
+
+        /* ===========================================================================================
+           ACCESSIBILITY
+           =========================================================================================== */
+
+        /* Keyboard-highlighted suggestion. Matches :hover so mouse and keyboard look identical. */
+        .suggestion-item.active {
+            background: #eef0fb;
+            outline: 2px solid #667eea;
+            outline-offset: -2px;
+        }
+
+        /* Every interactive element needs a visible focus ring; several had none. */
+        button:focus-visible,
+        input:focus-visible,
+        .suggestion-item:focus-visible {
+            outline: 3px solid #4c5fd7;
+            outline-offset: 2px;
+        }
+
+        /* Announced to screen readers, invisible on screen. Not `display: none`, which would stop
+           screen readers reading it at all. */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* ===========================================================================================
+           STATUS AND ERRORS
+           =========================================================================================== */
+
+        .status-banner {
+            margin: 16px 0;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-banner.error {
+            background: #fdecea;
+            color: #a4231a;
+            border: 1px solid #f5c2be;
+        }
+
+        .status-banner.info {
+            background: #eef2ff;
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+        }
+
+        .status-banner button {
+            margin-left: auto;
+            background: none;
+            border: 1px solid currentColor;
+            color: inherit;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Respect users who have asked the OS to reduce motion. */
+        @media (prefers-reduced-motion: reduce) {
+            .spinner { animation-duration: 2s; }
+            * { transition-duration: 0.01ms !important; }
+        }
     </style>
 </head>
 <body>
@@ -349,12 +519,43 @@
         <h1>🎬 Movie Recommender</h1>
         <p class="subtitle">Select 3-10 movies you love and get personalized recommendations</p>
 
+        <!--
+            ARIA combobox pattern. The search box was previously a bare <input> with a <div> of
+            results, which is invisible to a screen reader: nothing announced that suggestions had
+            appeared, how many there were, or which one was highlighted.
+
+            role="combobox" + aria-expanded + aria-controls + aria-activedescendant is the standard
+            pairing. aria-activedescendant is the important one — it lets focus stay in the input
+            (so typing keeps working) while still telling assistive tech which option is current.
+        -->
         <div class="search-section">
+            <label for="searchInput" class="sr-only">Search for movies to add to your list</label>
             <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Search for movies...">
-                <div class="suggestions" id="suggestions"></div>
+                <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="Search for movies..."
+                    role="combobox"
+                    aria-expanded="false"
+                    aria-controls="suggestions"
+                    aria-autocomplete="list"
+                    aria-describedby="searchHelp"
+                    autocomplete="off">
+                <p id="searchHelp" class="sr-only">
+                    Type at least two characters. Use the up and down arrow keys to review results,
+                    Enter to add a movie, and Escape to dismiss the list.
+                </p>
+                <div class="suggestions" id="suggestions" role="listbox"
+                     aria-label="Movie search results"></div>
             </div>
         </div>
+
+        <!--
+            Status messages. aria-live="polite" means a screen reader announces changes here without
+            interrupting whatever it is currently reading. Previously failures only reached
+            console.error, so a blind user got no feedback at all — and neither did a sighted one.
+        -->
+        <div id="statusRegion" aria-live="polite" aria-atomic="true"></div>
 
         <div class="selected-movies">
             <h2>Your Selected Movies (<span id="count">0</span>/10)</h2>
@@ -430,23 +631,154 @@
          */
         let latestSearchToken = 0;
 
+        /** Index of the keyboard-highlighted suggestion; -1 when none is. */
+        let activeSuggestion = -1;
+
+        /** localStorage key for the user's picks. Versioned so a shape change can't break loading. */
+        const STORAGE_KEY = 'movieRecommender.picks.v1';
+
         const searchInput = document.getElementById('searchInput');
         const suggestionsDiv = document.getElementById('suggestions');
         const selectedMoviesDiv = document.getElementById('selectedMovies');
         const countSpan = document.getElementById('count');
         const warningP = document.getElementById('warning');
         const getRecommendationsBtn = document.getElementById('getRecommendations');
+        const statusRegion = document.getElementById('statusRegion');
+
+        /**
+         * Shows a status message, replacing any previous one.
+         *
+         * Failures previously only reached `console.error`, so nothing appeared on screen and nothing
+         * was announced to a screen reader — the app just looked like it had done nothing. The
+         * container is `aria-live="polite"`, so writing here announces the message without cutting off
+         * whatever is currently being read.
+         *
+         * @param {string} message - Text to show. Set via textContent, never parsed as markup.
+         * @param {object} [options]
+         * @param {'info'|'error'} [options.type]
+         * @param {boolean} [options.spinner] - Show a progress indicator.
+         * @param {() => void} [options.onRetry] - Adds a Retry button wired to this callback.
+         */
+        function showStatus(message, { type = 'info', spinner = false, onRetry } = {}) {
+            statusRegion.replaceChildren();
+
+            const banner = document.createElement('div');
+            banner.className = `status-banner ${type}`;
+
+            if (spinner) {
+                const dot = document.createElement('span');
+                dot.className = 'spinner';
+                // Decorative: the adjacent text already conveys the state.
+                dot.setAttribute('aria-hidden', 'true');
+                banner.appendChild(dot);
+            }
+
+            const text = document.createElement('span');
+            text.textContent = message;
+            banner.appendChild(text);
+
+            if (onRetry) {
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.textContent = 'Retry';
+                retry.addEventListener('click', onRetry);
+                banner.appendChild(retry);
+            }
+
+            statusRegion.appendChild(banner);
+        }
+
+        /** Removes any status message. */
+        function clearStatus() {
+            statusRegion.replaceChildren();
+        }
+
+        /**
+         * Opens or closes the suggestions list, keeping ARIA state in sync.
+         *
+         * Screen readers rely on `aria-expanded` to announce that results appeared. Toggling display
+         * without it leaves them silent.
+         *
+         * @param {boolean} open
+         */
+        function setSuggestionsOpen(open) {
+            suggestionsDiv.style.display = open ? 'block' : 'none';
+            searchInput.setAttribute('aria-expanded', String(open));
+            if (!open) {
+                activeSuggestion = -1;
+                searchInput.removeAttribute('aria-activedescendant');
+            }
+        }
+
+        /**
+         * Moves the keyboard highlight through the suggestions.
+         *
+         * Focus deliberately stays in the input so typing keeps working; `aria-activedescendant`
+         * is what tells assistive technology which option is current. That is the whole point of the
+         * combobox pattern — moving real focus into the list would break typing.
+         *
+         * @param {number} delta - +1 for down, -1 for up.
+         */
+        function moveActiveSuggestion(delta) {
+            const items = [...suggestionsDiv.querySelectorAll('.suggestion-item')];
+            if (items.length === 0) return;
+
+            // Wraps at both ends, which is what the ARIA authoring practices describe.
+            activeSuggestion = (activeSuggestion + delta + items.length) % items.length;
+
+            items.forEach((item, i) => {
+                const isActive = i === activeSuggestion;
+                item.classList.toggle('active', isActive);
+                item.setAttribute('aria-selected', String(isActive));
+                if (isActive) {
+                    searchInput.setAttribute('aria-activedescendant', item.id);
+                    item.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
 
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.trim();
             clearTimeout(searchTimeout);
+            activeSuggestion = -1;
 
             if (query.length < 2) {
-                suggestionsDiv.style.display = 'none';
+                setSuggestionsOpen(false);
                 return;
             }
 
             searchTimeout = setTimeout(() => searchMovies(query), SEARCH_DEBOUNCE_MS);
+        });
+
+        /**
+         * Keyboard control for the suggestions list.
+         *
+         * The dropdown was previously mouse-only: a keyboard user could type a query and then had no
+         * way to select a result.
+         */
+        searchInput.addEventListener('keydown', (e) => {
+            const isOpen = suggestionsDiv.style.display === 'block';
+
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                if (!isOpen) return;
+                // Stop the caret jumping to the start or end of the input.
+                e.preventDefault();
+                moveActiveSuggestion(e.key === 'ArrowDown' ? 1 : -1);
+                return;
+            }
+
+            if (e.key === 'Enter') {
+                if (!isOpen || activeSuggestion < 0) return;
+                e.preventDefault();
+                suggestionsDiv.querySelectorAll('.suggestion-item')[activeSuggestion]?.click();
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                if (!isOpen) return;
+                e.preventDefault();
+                setSuggestionsOpen(false);
+            }
         });
 
         /**
@@ -495,7 +827,7 @@
             div.className = 'loading';
             div.textContent = message;
             suggestionsDiv.appendChild(div);
-            suggestionsDiv.style.display = 'block';
+            setSuggestionsOpen(true);
         }
 
         /**
@@ -599,12 +931,16 @@
         function displaySuggestions(movies) {
             suggestionsDiv.replaceChildren();
 
-            movies.slice(0, 10).forEach(movie => {
+            movies.slice(0, 10).forEach((movie, index) => {
                 const year = movie.release_date ? movie.release_date.substring(0, 4) : 'N/A';
                 const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
 
                 const item = document.createElement('div');
                 item.className = 'suggestion-item';
+                // aria-activedescendant references an element by id, so each option needs one.
+                item.id = `suggestion-${index}`;
+                item.setAttribute('role', 'option');
+                item.setAttribute('aria-selected', 'false');
 
                 const content = document.createElement('div');
                 content.className = 'suggestion-content';
@@ -626,7 +962,8 @@
                 suggestionsDiv.appendChild(item);
             });
 
-            suggestionsDiv.style.display = 'block';
+            activeSuggestion = -1;
+            setSuggestionsOpen(true);
         }
 
         /**
@@ -671,11 +1008,14 @@
 
                 updateSelectedMovies();
                 searchInput.value = '';
-                suggestionsDiv.style.display = 'none';
+                setSuggestionsOpen(false);
                 warningP.textContent = '';
             } catch (error) {
                 console.error('Error fetching movie details:', error);
-                warningP.textContent = 'Error loading movie details';
+                showStatus(`Could not load "${movie.title}". ${error.message}`, {
+                    type: 'error',
+                    onRetry: () => { clearStatus(); selectMovie(movie); }
+                });
             } finally {
                 // Always release the claim, or a failed fetch would permanently block re-selection.
                 pendingSelections.delete(movie.id);
@@ -690,6 +1030,49 @@
          * id instead of array index removes the coupling between rendered markup and array position,
          * and avoids needing a global function reachable from an HTML attribute.
          */
+        /**
+         * Saves the current picks so a refresh does not wipe them.
+         *
+         * Only the trimmed fields the UI needs are stored — not the full TMDB payload, which is
+         * ~34 KB per film and would blow past localStorage's ~5 MB budget with a handful of picks.
+         *
+         * Storage can throw (private browsing, quota exceeded, disabled entirely). Losing persistence
+         * must never break the app, so failures are swallowed deliberately.
+         */
+        function savePicks() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedMovies));
+            } catch {
+                // Non-fatal: the session still works, it just will not survive a refresh.
+            }
+        }
+
+        /**
+         * Restores picks saved by a previous session.
+         *
+         * Everything is validated rather than trusted: localStorage is user-writable and may hold
+         * data from an older version of this code. Anything malformed is discarded rather than
+         * allowed to render.
+         *
+         * @returns {number} How many picks were restored.
+         */
+        function loadPicks() {
+            let stored;
+            try {
+                stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            } catch {
+                return 0;
+            }
+
+            if (!Array.isArray(stored)) return 0;
+
+            const valid = stored.filter(m =>
+                m && typeof m.id === 'number' && typeof m.title === 'string');
+
+            selectedMovies.push(...valid.slice(0, MAX_MOVIES));
+            return selectedMovies.length;
+        }
+
         function updateSelectedMovies() {
             selectedMoviesDiv.replaceChildren();
 
@@ -723,6 +1106,10 @@
 
             countSpan.textContent = selectedMovies.length;
             getRecommendationsBtn.disabled = selectedMovies.length < MIN_MOVIES;
+
+            // Persist here rather than at each call site, so add, remove, and restore are all covered
+            // by one place that cannot be forgotten.
+            savePicks();
 
             if (selectedMovies.length < MIN_MOVIES) {
                 const remaining = MIN_MOVIES - selectedMovies.length;
@@ -778,14 +1165,23 @@
             getRecommendationsBtn.disabled = true;
             getRecommendationsBtn.textContent = 'Finding similar movies...';
 
+            // A cold request takes several seconds while the server fetches candidates from TMDB.
+            // Without a visible indicator the page looks frozen, and a screen reader user gets no
+            // signal at all that anything is happening.
+            showStatus('Finding movies you might like...', { spinner: true });
+
             // try/finally guarantees the button is restored. Without it, anything thrown outside the
             // inner per-movie catch - a render error, a sort failure - would leave the button
             // permanently disabled reading "Finding similar movies...", recoverable only by reload.
             try {
                 await buildAndRenderRecommendations();
+                clearStatus();
             } catch (error) {
                 console.error('Recommendation run failed:', error);
-                warningP.textContent = 'Something went wrong building recommendations. Please try again.';
+                showStatus(
+                    error.message || 'Something went wrong building recommendations.',
+                    { type: 'error', onRetry: () => getRecommendations() }
+                );
             } finally {
                 getRecommendationsBtn.disabled = false;
                 getRecommendationsBtn.textContent = 'Get Recommendations';
@@ -953,9 +1349,28 @@
             recommendationsSection.scrollIntoView({ behavior: 'smooth' });
         }
 
+        /**
+         * Restores any saved picks and renders the initial state.
+         *
+         * Runs last so every function it depends on is defined. `updateSelectedMovies()` is called
+         * unconditionally because it also sets the counter and the button's disabled state — skipping
+         * it when nothing was restored would leave the UI showing stale defaults.
+         */
+        (function init() {
+            const restored = loadPicks();
+            updateSelectedMovies();
+
+            if (restored > 0) {
+                showStatus(
+                    `Restored ${restored} movie${restored === 1 ? '' : 's'} from your last visit.`,
+                    { type: 'info' }
+                );
+            }
+        })();
+
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.search-box')) {
-                suggestionsDiv.style.display = 'none';
+                setSuggestionsOpen(false);
             }
         });
     </script>
