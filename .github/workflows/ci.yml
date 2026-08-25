@@ -24,6 +24,10 @@ concurrency:
 
 jobs:
   lint:
+    # NOTE: this name is deliberately unchanged even though the job now runs tests too. It is the
+    # required status check on `main`, matched by string. Renaming it means the required check never
+    # reports, and every PR sits BLOCKED waiting for a check that no longer exists under that name.
+    # Change it only together with the branch protection rule.
     name: Lint and boot check
     runs-on: ubuntu-latest
 
@@ -44,6 +48,13 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Drives public/index.html in jsdom and exercises lib/cache.js directly. Every TMDB response is
+      # stubbed, so this needs no API key and makes no network call — which is what lets it run here
+      # at all. It catches the class of bug lint and the boot check below cannot see: a card that
+      # renders empty, a chip that removes the wrong film, a title interpolated into markup.
+      - name: Tests
+        run: npm test
 
       # Boot the server and confirm it serves the frontend. This is the check that would have caught
       # the express.static and dotenv path bugs fixed in Phase 0, both of which only appear when the
